@@ -31,3 +31,7 @@ contributes:
   shell.create:
     - {id: lease, label: Lease, path: property/e/Lease/new, entity: Lease}
     - {id: request, label: Maintenance Request, path: property/e/MaintenanceRequest/new, entity: MaintenanceRequest}
+  # The workspace's portal: a lessee's leases, rent invoiced and repairs at /portal/home/ (the
+  # property package's endpoints).
+  shell.portal:
+    - {id: home, title: Your home, description: "Your lease, the rent invoiced and repairs you asked for"}

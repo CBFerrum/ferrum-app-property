@@ -3,8 +3,9 @@
 //! reset first): a lease activated, letting its unit, and its terms kept; a second lease on the same
 //! days refused; upkeep invoicing each month's rent and parking once through ERP, then ending the
 //! lease and freeing the unit; a quarterly lease's last period cut at its end; a lease ended early,
-//! invoiced to its last day; urgent requests taking a unit out of service until done; and who may do
-//! what.
+//! invoiced to its last day; urgent requests taking a unit out of service until done; who may do
+//! what; and the portal's "Your home", where a lessee sees only their leases and asks for repairs
+//! only in a unit they rent now.
 
 use ferrum_kernel::secret::SecretKey;
 use ferrum_kernel::tenant::NewTenant;
@@ -24,6 +25,23 @@ fn uid(v: &Value) -> Uuid {
 
 fn dec(v: &Value) -> f64 {
     v.as_str().map(|s| s.parse().unwrap()).or_else(|| v.as_f64()).unwrap_or_else(|| panic!("not a number: {v}"))
+}
+
+/// A call to Property's endpoints as `who` (`/api/app/property/{path}`).
+async fn call(k: &Kernel, who: Option<&Ctx>, method: &str, path: &str, body: Value) -> Result<Value, Error> {
+    let site = k.hooks.site("property").expect("property's endpoints").clone();
+    let req = ferrum_kernel::SiteRequest {
+        tenant: who.map(|c| c.tenant).unwrap_or_default(),
+        user: who.cloned(),
+        method: method.into(),
+        path: format!("/{path}"),
+        query: Default::default(),
+        headers: Default::default(),
+        body: if body.is_null() { vec![] } else { body.to_string().into_bytes() },
+        client_ip: "203.0.113.9".into(),
+    };
+    let r = site.handle(k, req).await?;
+    Ok(serde_json::from_slice(&r.body).unwrap())
 }
 
 fn day(s: &str) -> chrono::NaiveDate {
@@ -270,5 +288,74 @@ async fn scenario() {
         t.k.insert(&manager, "RentInvoice", obj(json!({"lease": first.to_string(), "period_from": "2026-07-01", "period_to": "2026-07-31"}))).await,
         "forbidden",
         "",
+    );
+
+    // ───────────── the portal's "Your home" ─────────────
+    t.k.update(&a, "Customer", ana, obj(json!({"email": "ana@harbour.test"})), None).await.unwrap();
+    let portal = |email: &'static str| {
+        let k = k.clone();
+        let a = a.clone();
+        async move {
+            let id = k.create_user(&a, email, "Lessee", None, &[], false).await.unwrap();
+            k.set_user_kind(&a, id, "portal").await.unwrap();
+            k.load_ctx(a.tenant, id, None, "it".into()).await.unwrap()
+        }
+    };
+    let ana_p = portal("Ana@Harbour.test").await;
+    assert!(ana_p.roles.is_empty() && t.k.list(&ana_p, "Lease", &ListQuery::default()).await.is_err(), "no rights of her own");
+    let home = call(&k, Some(&ana_p), "GET", "portal/home", Value::Null).await.unwrap();
+    let mut numbers: Vec<(String, String)> =
+        home["leases"].as_array().unwrap().iter().map(|l| (l["unit_number"].as_str().unwrap().into(), l["status"].as_str().unwrap().into())).collect();
+    numbers.sort();
+    let want_leases: Vec<(String, String)> =
+        [("101", "Active"), ("101", "Ended"), ("103", "Active")].iter().map(|(u, s)| (u.to_string(), s.to_string())).collect();
+    assert_eq!(numbers, want_leases, "hers, past their draft; Bo's are not here");
+    let ended = home["leases"].as_array().unwrap().iter().find(|l| l["status"] == "Ended").unwrap();
+    assert_eq!((ended["building"].as_str(), ended["invoices"].as_array().unwrap().len()), (Some("Harbour View"), 6));
+    assert!(ended["invoices"].as_array().unwrap().iter().all(|i| i["invoice"].is_string()), "each opens on Your invoices");
+    // A repair in a unit she rents now, and none in another.
+    let asked =
+        call(&k, Some(&ana_p), "POST", "portal/requests", json!({"unit": u103.to_string(), "summary": "Window stuck", "priority": "Low"})).await.unwrap();
+    let req = t.get("MaintenanceRequest", uid(&asked["id"])).await;
+    assert_eq!(
+        (req["reported_by"].as_str(), req["unit"].as_str(), req["status"].as_str()),
+        (Some("ana@harbour.test"), Some(u103.to_string().as_str()), Some("Open"))
+    );
+    refused(
+        call(&k, Some(&ana_p), "POST", "portal/requests", json!({"unit": u102.to_string(), "summary": "Not mine"})).await,
+        "invalid",
+        "not a unit you rent now",
+    );
+    refused(
+        call(&k, Some(&ana_p), "POST", "portal/requests", json!({"unit": u103.to_string(), "summary": "x", "priority": "Emergency"})).await,
+        "invalid",
+        "choose Low",
+    );
+    refused(call(&k, Some(&ana_p), "POST", "portal/requests", json!({"unit": u103.to_string(), "summary": "  "})).await, "invalid", "summary");
+    let urgent =
+        call(&k, Some(&ana_p), "POST", "portal/requests", json!({"unit": u103.to_string(), "summary": "Gas smell", "priority": "Urgent"})).await.unwrap();
+    assert_eq!(t.status(u103).await, "Under Maintenance", "an urgent request from the portal holds the unit too");
+    t.k.update(&fixer, "MaintenanceRequest", uid(&urgent["id"]), obj(json!({"status": "Done"})), None).await.unwrap();
+    let home = call(&k, Some(&ana_p), "GET", "portal/home", Value::Null).await.unwrap();
+    let mut asked: Vec<(String, String)> =
+        home["requests"].as_array().unwrap().iter().map(|r| (r["summary"].as_str().unwrap().into(), r["status"].as_str().unwrap().into())).collect();
+    asked.sort();
+    assert_eq!(asked, [("Gas smell".to_string(), "Done".to_string()), ("Window stuck".to_string(), "Open".to_string())], "only what she asked for");
+    // Someone with no lease sees nothing; nobody signed in, nothing at all.
+    let stranger = portal("cy@elsewhere.test").await;
+    let none = call(&k, Some(&stranger), "GET", "portal/home", Value::Null).await.unwrap();
+    assert!(none["leases"].as_array().unwrap().is_empty() && none["requests"].as_array().unwrap().is_empty());
+    refused(
+        call(&k, Some(&stranger), "POST", "portal/requests", json!({"unit": u103.to_string(), "summary": "Let me in"})).await,
+        "invalid",
+        "not a unit you rent now",
+    );
+    assert!(matches!(call(&k, None, "GET", "portal/home", Value::Null).await, Err(Error::Unauthorized(_))));
+    // Her lease of 103 ended early, she asks for no more repairs there.
+    t.k.run_action(&manager, "Lease", lease3, "terminate", json!({"date": "2026-10-31"})).await.unwrap();
+    refused(
+        call(&k, Some(&ana_p), "POST", "portal/requests", json!({"unit": u103.to_string(), "summary": "One more"})).await,
+        "invalid",
+        "not a unit you rent now",
     );
 }

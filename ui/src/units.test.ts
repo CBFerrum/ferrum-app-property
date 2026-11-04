@@ -26,3 +26,15 @@ describe("the units page", () => {
     expect(l.map((x) => x.id)).toEqual(["a", "b"]);
   });
 });
+
+describe("the portal's home", () => {
+  it("offers repairs only in units rented now", async () => {
+    const { rentedNow } = await import("./Portal");
+    const l = rentedNow([
+      { id: "a", status: "Active", unit: "u1", invoices: [] },
+      { id: "e", status: "Ended", unit: "u2", invoices: [] },
+      { id: "t", status: "Terminated", unit: "u3", invoices: [] },
+    ]);
+    expect(l.map((x) => x.unit)).toEqual(["u1"]);
+  });
+});

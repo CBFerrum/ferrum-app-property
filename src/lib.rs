@@ -4,12 +4,14 @@
 //! * `leases`: a unit has one active lease at a time; activating one lets the unit, ending one frees
 //!   it; upkeep invoices each lease's periods once each, rent and charges, up to today and its end.
 //! * `requests`: an urgent maintenance request takes its unit out of service until it is done.
+//! * `site`: the portal's "Your home", a lessee's leases, rent invoiced and repairs asked for.
 //!
 //! This app's own design; no code was copied (docs/PROVENANCE.md). Hooks are registered per entity,
 //! so a workspace without the `property` package never runs them.
 
 mod leases;
 mod requests;
+mod site;
 
 use chrono::{NaiveDate, Utc};
 use ferrum_domain::reports::ReportSource;
@@ -30,9 +32,10 @@ pub fn packages() -> std::result::Result<Vec<ferrum_meta::Package>, ferrum_meta:
     ferrum_meta::catalog::load_embedded(EMBEDDED)
 }
 
-/// Registers this app's document hooks.
+/// Registers this app's document hooks, and the portal's "Your home".
 pub fn register(hooks: &mut HookRegistry) {
     hooks.register("Lease", Arc::new(leases::LeaseHook)).register("MaintenanceRequest", Arc::new(requests::RequestHook));
+    hooks.add_site("property", Arc::new(site::PropertySite));
 }
 
 /// This app's reports: none of its own yet; rent is ERP's receivables.
