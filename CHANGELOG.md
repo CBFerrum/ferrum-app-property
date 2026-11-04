@@ -9,3 +9,4 @@ Property and facilities (FERRUM-INDUSTRY-008).
 - Rent and other charges invoiced each period, once, through ERP to the lessee.
 - Maintenance requests, an urgent one holding its unit until done; inspections with findings.
 - Its own interface at `/property/`: the units by building, leases ending soon and open requests.
+- The portal's "Your home" at `/portal/home/`: a lessee's leases and rent, and repairs asked for.

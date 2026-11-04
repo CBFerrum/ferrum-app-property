@@ -57,7 +57,7 @@
     - {name: notes, type: text}
   actions:
     - {name: activate, label: Activate It, permission: write, condition: "doc.status == 'Draft'"}
-    - {name: terminate, label: End It Early, permission: write, condition: "doc.status == 'Active'"}
+    - {name: terminate, label: End It Early, permission: write, condition: "doc.status == 'Active'", params: [{name: date, type: date, label: Last Day, required: true, description: "From the lease's start to today"}]}
   numbering: {template: "LSE-{YYYY}-{seq:5}"}
   list: {columns: [number, unit, lessee, starts_on, ends_on, rent, status], sort: starts_on desc}
 
@@ -122,6 +122,7 @@
     - {name: priority, type: select, options: [Low, Normal, Urgent], default: Normal, in_list: true, in_filter: true}
     - {name: status, type: select, options: [Open, In Progress, Done], default: Open, in_list: true, in_filter: true}
     - {name: assigned_to, type: data}
+    - {name: reported_by, type: email, read_only: true, no_copy: true, in_filter: true, description: "The lessee who asked for it on the portal"}
     - {name: done_on, type: date, read_only: true, no_copy: true}
   numbering: {template: "MR-{YYYY}-{seq:5}"}
   list: {columns: [number, unit, summary, priority, status], sort: created_at desc}

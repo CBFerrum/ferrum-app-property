@@ -10,7 +10,7 @@ Property and facilities for [Ferrum](https://github.com/CBFerrum/Ferrum):
 | 🏢 App | `property`, native, in the server |
 | 🧩 Package | `property` (needs ERP's selling and accounting) |
 | 🖥️ Interface | its own, at `/property/`: the units by building, the leases ending soon and the open requests, and the records |
-| 🔐 Roles | Property Manager, Facilities |
+| 🔐 Roles | Property Manager, Facilities; lessees on the portal |
 | 📜 Licence | AGPL-3.0-only |
 
 ## Highlights
@@ -30,6 +30,10 @@ Property and facilities for [Ferrum](https://github.com/CBFerrum/Ferrum):
   is done. The unit then goes back to let or vacant, as its leases say. A request keeps the day it
   was done.
 - **Inspections.** Move-in, move-out and routine inspections, with a finding for each area.
+- **Your home, on the portal.** A lessee signs in to the workspace's portal and sees their leases
+  past their draft, the rent invoiced for each (opening on ERP's "Your invoices"), and the repairs
+  they asked for. They ask for a repair only in a unit they rent now; an urgent one holds the unit
+  as any other does.
 
 ## Develop
 
@@ -43,7 +47,8 @@ cd ui && npm run build && npm run check
 - rent and parking invoiced each month, once;
 - a quarterly lease cut at its end, and a lease ended early;
 - urgent requests holding a unit;
-- who may do what.
+- who may do what;
+- the portal: only her leases, repairs only where she rents now.
 
 ## Not yet
 
@@ -52,12 +57,13 @@ cd ui && npm run build && npm run check
 - Deposits held and returned through the books (the amount is recorded), and late fees.
 - Ending a lease on a future day, with notice periods.
 - Service-charge budgets shared across a building, and owners' statements for managed property.
+- An owners' portal, and paying rent on the portal (ERP's invoices page shows what is due).
 
 ## Changelog
 
 | Version | Highlights |
 |---|---|
-| **0.1.0** | Buildings and units, leases invoiced each period through ERP, inspections and maintenance requests (FERRUM-INDUSTRY-008). |
+| **0.1.0** | Buildings and units, leases invoiced each period through ERP, inspections, maintenance requests, and lessees' "Your home" on the portal (FERRUM-INDUSTRY-008). |
 
 ## License
 
