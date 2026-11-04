@@ -1,0 +1,35 @@
+package: property
+version: 0.1.0
+label: Property
+description: "Buildings and units, leases with rent and charges invoiced each period through ERP, inspections and maintenance requests"
+depends: [core, selling, accounting]
+
+modules:
+  - name: property
+    label: Property
+    icon: building-2
+    order: 51
+    items: [Lease, Unit, Building, RentInvoice, Inspection, MaintenanceRequest, PropertySettings]
+
+roles:
+  - name: Property Manager
+    description: Runs the buildings, units and leases, and sees the rent invoiced, inspections and requests.
+    permissions:
+      - {entity: PropertySettings, read: true, write: true, create: true}
+      - {entity: Building, read: true, write: true, create: true}
+      - {entity: Unit, read: true, write: true, create: true, delete: true, export: true, import: true}
+      - {entity: Lease, read: true, write: true, create: true, export: true}
+      - {entity: RentInvoice, read: true, export: true}
+      - {entity: Inspection, read: true, write: true, create: true}
+      - {entity: MaintenanceRequest, read: true, write: true, create: true}
+      - {entity: Customer, read: true, write: true, create: true}
+      - {entity: Item, read: true}
+      - {entity: Company, read: true}
+      - {entity: SalesInvoice, read: true, create: true}
+  - name: Facilities
+    description: Works maintenance requests and inspections; sees units.
+    permissions:
+      - {entity: Building, read: true}
+      - {entity: Unit, read: true}
+      - {entity: Inspection, read: true, write: true, create: true}
+      - {entity: MaintenanceRequest, read: true, write: true, create: true}

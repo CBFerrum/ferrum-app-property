@@ -1,0 +1,12 @@
+{
+  "name": "ferrum-app-property-ui",
+  "private": true,
+  "type": "module",
+  "description": "Property's own interface at /property/: units, leases and what is due, and the records, built with Ferrum-Frontend's packages from the sibling checkout (../../ferrum/web)",
+  "scripts": {
+    "build": "node ../../ferrum/web/packages/build/cli.mjs build",
+    "check": "node ../../ferrum/web/packages/build/cli.mjs check",
+    "typecheck": "node ../../ferrum/web/packages/build/cli.mjs typecheck",
+    "test": "node ../../ferrum/web/packages/build/cli.mjs test"
+  }
+}

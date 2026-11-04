@@ -1,0 +1,127 @@
+- name: PropertySettings
+  label: Property Settings
+  kind: settings
+  module: property
+  description: "Where rent is invoiced from."
+  fields:
+    - {name: company, type: link, to: Company, required: true}
+    - {name: rent_item, type: link, to: Item, required: true, description: "What rent is invoiced as"}
+  form:
+    - {label: Books, fields: [company, rent_item]}
+
+- name: Building
+  label: Property
+  label_plural: Properties
+  kind: master
+  module: property
+  title_field: building_name
+  fields:
+    - {name: building_name, type: data, required: true, in_list: true}
+    - {name: address, type: text}
+    - {name: manager_email, type: email, label: Manager}
+  list: {columns: [building_name, manager_email], sort: building_name asc}
+
+- name: Unit
+  label: Unit
+  label_plural: Units
+  kind: master
+  module: property
+  title_field: unit_number
+  fields:
+    - {name: unit_number, type: data, required: true, in_list: true}
+    - {name: building, type: link, to: Building, required: true, in_list: true, in_filter: true}
+    - {name: unit_type, type: select, options: [Residential, Office, Retail, Industrial, Parking, Storage], default: Residential, in_list: true, in_filter: true}
+    - {name: area, type: decimal, label: Area (sq m), in_list: true}
+    - {name: status, type: select, options: [Vacant, Let, Under Maintenance], default: Vacant, read_only: true, no_copy: true, in_list: true, in_filter: true}
+  list: {columns: [unit_number, building, unit_type, area, status], sort: unit_number asc}
+
+- name: Lease
+  label: Lease
+  label_plural: Leases
+  kind: master
+  module: property
+  title_field: unit
+  description: A unit let to a tenant for a term. Active, it is invoiced each period through ERP; a unit has one active lease at a time.
+  fields:
+    - {name: unit, type: link, to: Unit, required: true, in_list: true, in_filter: true}
+    - {name: lessee, type: link, to: Customer, required: true, in_list: true, in_filter: true, label: Tenant}
+    - {name: starts_on, type: date, required: true, in_list: true}
+    - {name: ends_on, type: date, required: true, in_list: true}
+    - {name: rent, type: currency, required: true, in_list: true, description: "A period's rent"}
+    - {name: frequency, type: select, options: [Monthly, Quarterly, Yearly], default: Monthly, required: true, in_list: true}
+    - {name: deposit, type: currency}
+    - {name: charges, type: table, of: LeaseCharge, label: Other Charges, description: "Invoiced with the rent each period"}
+    - {name: status, type: select, options: [Draft, Active, Ended, Terminated], default: Draft, read_only: true, no_copy: true, in_list: true, in_filter: true}
+    - {name: next_invoice_on, type: date, read_only: true, no_copy: true, description: "The first day of the next period to invoice"}
+    - {name: terminated_on, type: date, read_only: true, no_copy: true}
+    - {name: notes, type: text}
+  actions:
+    - {name: activate, label: Activate It, permission: write, condition: "doc.status == 'Draft'"}
+    - {name: terminate, label: End It Early, permission: write, condition: "doc.status == 'Active'"}
+  numbering: {template: "LSE-{YYYY}-{seq:5}"}
+  list: {columns: [number, unit, lessee, starts_on, ends_on, rent, status], sort: starts_on desc}
+
+- name: LeaseCharge
+  label: Charge
+  kind: child
+  fields:
+    - {name: charge, type: data, required: true, in_list: true}
+    - {name: item, type: link, to: Item, required: true, in_list: true}
+    - {name: amount, type: currency, required: true, in_list: true}
+
+- name: RentInvoice
+  label: Rent Invoice
+  label_plural: Rent Invoices
+  kind: master
+  module: property
+  title_field: lease
+  description: One period of a lease, invoiced once.
+  fields:
+    - {name: lease, type: link, to: Lease, required: true, read_only: true, in_list: true, in_filter: true}
+    - {name: period_from, type: date, required: true, read_only: true, in_list: true}
+    - {name: period_to, type: date, required: true, read_only: true, in_list: true}
+    - {name: amount, type: currency, read_only: true, in_list: true}
+    - {name: sales_invoice, type: link, to: SalesInvoice, read_only: true}
+  list: {columns: [lease, period_from, period_to, amount], sort: period_from desc}
+
+- name: Inspection
+  label: Inspection
+  label_plural: Inspections
+  kind: master
+  module: property
+  title_field: unit
+  fields:
+    - {name: unit, type: link, to: Unit, required: true, in_list: true, in_filter: true}
+    - {name: lease, type: link, to: Lease}
+    - {name: kind, type: select, options: [Move In, Move Out, Routine], default: Routine, required: true, in_list: true, in_filter: true}
+    - {name: date, type: date, required: true, in_list: true}
+    - {name: inspector, type: data}
+    - {name: status, type: select, options: [Scheduled, Done], default: Scheduled, in_list: true, in_filter: true}
+    - {name: findings, type: table, of: InspectionFinding}
+  list: {columns: [unit, kind, date, status], sort: date desc}
+
+- name: InspectionFinding
+  label: Finding
+  kind: child
+  fields:
+    - {name: area, type: data, required: true, in_list: true}
+    - {name: condition, type: select, options: [Good, Fair, Poor, Damaged], default: Good, required: true, in_list: true}
+    - {name: note, type: data, in_list: true}
+
+- name: MaintenanceRequest
+  label: Maintenance Request
+  label_plural: Maintenance Requests
+  kind: master
+  module: property
+  title_field: summary
+  description: Something to fix. An urgent one takes its unit out of service until it is done.
+  fields:
+    - {name: unit, type: link, to: Unit, required: true, in_list: true, in_filter: true}
+    - {name: summary, type: data, required: true, in_list: true}
+    - {name: details, type: text}
+    - {name: priority, type: select, options: [Low, Normal, Urgent], default: Normal, in_list: true, in_filter: true}
+    - {name: status, type: select, options: [Open, In Progress, Done], default: Open, in_list: true, in_filter: true}
+    - {name: assigned_to, type: data}
+    - {name: done_on, type: date, read_only: true, no_copy: true}
+  numbering: {template: "MR-{YYYY}-{seq:5}"}
+  list: {columns: [number, unit, summary, priority, status], sort: created_at desc}

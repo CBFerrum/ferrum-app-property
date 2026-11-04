@@ -1,0 +1,33 @@
+id: property
+name: Property
+version: 0.1.0
+publisher: cbferrum
+summary: "Buildings and units, leases with rent and charges invoiced each period through ERP, inspections and maintenance requests"
+description: README.md
+categories: [industry, finance]
+license: AGPL-3.0-only
+homepage: https://github.com/CBFerrum/ferrum-app-property
+support: https://github.com/CBFerrum/ferrum-app-property/issues
+runtime: native
+platform: ">=0.3.2, <0.4"
+# Records of ERP (customers, items, invoices): installing it installs ERP.
+requires: {erp: ">=0.1"}
+packages: [property]
+uninstall: ask
+# Its own interface at /property/: the units by building, leases ending soon and open requests.
+ui:
+  dist: ui/dist
+contributes:
+  shell.app:
+    - id: property
+      route: property
+      title: Property
+      description: Units, leases, rent and maintenance
+      icon: building-2
+      color: "#0f766e"
+      roles: [Property Manager, Facilities]
+  shell.open:
+    - {id: property, package: property, path: "property/e/{entity}/{id}", list: "property/e/{entity}"}
+  shell.create:
+    - {id: lease, label: Lease, path: property/e/Lease/new, entity: Lease}
+    - {id: request, label: Maintenance Request, path: property/e/MaintenanceRequest/new, entity: MaintenanceRequest}
