@@ -30,7 +30,7 @@ contributes:
     - {id: property, package: property, path: "property/e/{entity}/{id}", list: "property/e/{entity}"}
   shell.create:
     - {id: lease, label: Lease, path: property/e/Lease/new, entity: Lease}
-    - {id: request, label: Maintenance Request, path: property/e/MaintenanceRequest/new, entity: MaintenanceRequest}
+    - {id: request, label: Repair Request, path: property/e/RepairRequest/new, entity: RepairRequest}
   # The workspace's portal: a lessee's leases, rent invoiced and repairs at /portal/home/ (the
   # property package's endpoints).
   shell.portal:
