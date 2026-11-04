@@ -43,7 +43,7 @@ export function Home() {
         rows("Building", [], { sort: "building_name asc" }),
         rows("Unit", [], { sort: "unit_number asc" }),
         rows("Lease", [["status", "eq", "Active"]]),
-        rows("RepairRequest", [["status", "neq", "Done"]]),
+        rows("RepairRequest", [["status", "!=", "Done"]]),
       ]);
       return { buildings, units, leases, requests };
     },
