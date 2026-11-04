@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.1
+
+From a browser walk of the lessees' portal.
+
+- Rent invoiced opens on ERP's "Your invoices" once the invoice is issued; a draft says it is not issued yet, since "Your invoices" shows only issued ones (it linked to an invoice the lessee could not open).
+- Rebuilt with Ferrum-Frontend's fields that name their controls, so the portal's forms are named for assistive technology.
+
 ## 0.1.0
 
 Property and facilities (FERRUM-INDUSTRY-008).
