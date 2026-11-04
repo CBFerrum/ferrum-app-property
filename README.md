@@ -63,6 +63,7 @@ cd ui && npm run build && npm run check
 
 | Version | Highlights |
 |---|---|
+| **0.1.2** | Rebuilt with Ferrum-Frontend 80ff179: labels name their fields, and linked titles show their titles. |
 | **0.1.1** | Rent opens on "Your invoices" once issued; a draft says it is not issued yet. |
 | **0.1.0** | Buildings and units, leases invoiced each period through ERP, inspections, maintenance requests, and lessees' "Your home" on the portal (FERRUM-INDUSTRY-008). |
 
