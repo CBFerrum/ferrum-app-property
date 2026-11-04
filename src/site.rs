@@ -93,12 +93,24 @@ async fn home(k: &Kernel, user: &Ctx) -> Result<Value> {
             None => Doc::new(),
         };
         let invoices = k.find_tx(&sctx, &mut tx, "RentInvoice", &[Filter::eq("lease", s(&l, "id").unwrap_or_default())], Some("period_from desc"), 120).await?;
+        let mut lines = Vec::with_capacity(invoices.len());
+        for i in &invoices {
+            // It opens on ERP's "Your invoices" once issued: a draft is not the lessee's yet.
+            let issued = match id(i, "sales_invoice") {
+                Some(si) => {
+                    k.find_tx(&sctx, &mut tx, "SalesInvoice", &[Filter::eq("id", si.to_string()), Filter::eq("docstatus", 1)], None, 1).await?.len() == 1
+                }
+                None => false,
+            };
+            lines.push(json!({"period_from": s(i, "period_from"), "period_to": s(i, "period_to"), "amount": s(i, "amount"),
+                              "invoice": if issued { s(i, "sales_invoice") } else { None }, "issued": issued}));
+        }
         out.push(json!({
             "id": s(&l, "id"), "number": s(&l, "number"), "status": s(&l, "status"),
             "unit": s(&l, "unit"), "unit_number": s(&unit, "unit_number"), "building": s(&building, "building_name"), "address": s(&building, "address"),
             "starts_on": s(&l, "starts_on"), "ends_on": s(&l, "ends_on"), "terminated_on": s(&l, "terminated_on"),
             "rent": s(&l, "rent"), "frequency": s(&l, "frequency"),
-            "invoices": invoices.iter().map(|i| json!({"period_from": s(i, "period_from"), "period_to": s(i, "period_to"), "amount": s(i, "amount"), "invoice": s(i, "sales_invoice")})).collect::<Vec<_>>(),
+            "invoices": lines,
         }));
     }
     let requests = k.find_tx(&sctx, &mut tx, "RepairRequest", &[Filter::eq("reported_by", email.clone())], Some("created_at desc"), 50).await?;

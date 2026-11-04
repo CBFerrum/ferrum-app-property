@@ -24,7 +24,7 @@ export interface PortalLease {
   terminated_on?: string | null;
   rent?: string | null;
   frequency?: string | null;
-  invoices: { period_from?: string | null; period_to?: string | null; amount?: string | null; invoice?: string | null }[];
+  invoices: { period_from?: string | null; period_to?: string | null; amount?: string | null; invoice?: string | null; issued?: boolean }[];
 }
 
 export interface PortalRequest {
@@ -90,6 +90,7 @@ export function PortalHome() {
                   <li key={`${i.period_from}`}>
                     {i.invoice ? <a href={`/portal/invoices/${i.invoice}`}>{`${i.period_from} to ${i.period_to}`}</a> : `${i.period_from} to ${i.period_to}`} ·{" "}
                     {i.amount}
+                    {!i.issued && <span className="muted"> · not issued yet</span>}
                   </li>
                 ))}
               </ul>

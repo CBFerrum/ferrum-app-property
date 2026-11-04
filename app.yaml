@@ -1,6 +1,6 @@
 id: property
 name: Property
-version: 0.1.0
+version: 0.1.1
 publisher: cbferrum
 summary: "Buildings and units, leases with rent and charges invoiced each period through ERP, inspections and maintenance requests"
 description: README.md

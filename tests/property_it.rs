@@ -9,7 +9,7 @@
 
 use ferrum_kernel::secret::SecretKey;
 use ferrum_kernel::tenant::NewTenant;
-use ferrum_kernel::{Ctx, Db, DbConfig, Doc, Error, HookRegistry, Kernel, KernelSettings, ListQuery};
+use ferrum_kernel::{Ctx, Db, DbConfig, Doc, Error, Filter, HookRegistry, Kernel, KernelSettings, ListQuery};
 use ferrum_meta::Catalog;
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -312,7 +312,20 @@ async fn scenario() {
     assert_eq!(numbers, want_leases, "hers, past their draft; Bo's are not here");
     let ended = home["leases"].as_array().unwrap().iter().find(|l| l["status"] == "Ended").unwrap();
     assert_eq!((ended["building"].as_str(), ended["invoices"].as_array().unwrap().len()), (Some("Harbour View"), 6));
-    assert!(ended["invoices"].as_array().unwrap().iter().all(|i| i["invoice"].is_string()), "each opens on Your invoices");
+    assert!(ended["invoices"].as_array().unwrap().iter().all(|i| i["invoice"].is_null() && i["issued"] == false), "drafts are not hers to open yet");
+    // Once accounts issue one, it opens on Your invoices.
+    let q = ListQuery { filters: vec![Filter::eq("lease", ended["id"].as_str().unwrap())], ..Default::default() };
+    let first_rent = t.k.list(&a, "RentInvoice", &q).await.unwrap().rows.remove(0);
+    let issued = uid(&first_rent["sales_invoice"]);
+    t.k.submit(&a, "SalesInvoice", issued, None).await.expect("accounts issue the rent");
+    let home = call(&k, Some(&ana_p), "GET", "portal/home", Value::Null).await.unwrap();
+    let ended = home["leases"].as_array().unwrap().iter().find(|l| l["status"] == "Ended").unwrap().clone();
+    let open: Vec<&Value> = ended["invoices"].as_array().unwrap().iter().filter(|i| i["invoice"].is_string()).collect();
+    assert_eq!(
+        (open.len(), open[0]["invoice"].as_str(), open[0]["issued"].as_bool()),
+        (1, Some(issued.to_string().as_str()), Some(true)),
+        "the issued one opens on Your invoices"
+    );
     // A repair in a unit she rents now, and none in another.
     let asked =
         call(&k, Some(&ana_p), "POST", "portal/requests", json!({"unit": u103.to_string(), "summary": "Window stuck", "priority": "Low"})).await.unwrap();
