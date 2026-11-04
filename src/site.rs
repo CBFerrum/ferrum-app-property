@@ -101,7 +101,7 @@ async fn home(k: &Kernel, user: &Ctx) -> Result<Value> {
             "invoices": invoices.iter().map(|i| json!({"period_from": s(i, "period_from"), "period_to": s(i, "period_to"), "amount": s(i, "amount"), "invoice": s(i, "sales_invoice")})).collect::<Vec<_>>(),
         }));
     }
-    let requests = k.find_tx(&sctx, &mut tx, "MaintenanceRequest", &[Filter::eq("reported_by", email.clone())], Some("created_at desc"), 50).await?;
+    let requests = k.find_tx(&sctx, &mut tx, "RepairRequest", &[Filter::eq("reported_by", email.clone())], Some("created_at desc"), 50).await?;
     tx.commit().await?;
     let requests: Vec<Value> = requests
         .iter()
@@ -143,7 +143,7 @@ async fn raise(k: &Kernel, user: &Ctx, body: &Map<String, Value>) -> Result<Valu
             .insert_tx(
                 &sctx,
                 &mut tx,
-                "MaintenanceRequest",
+                "RepairRequest",
                 crate::obj(json!({"unit": unit.to_string(), "summary": summary, "details": details, "priority": priority, "reported_by": email})),
             )
             .await?;

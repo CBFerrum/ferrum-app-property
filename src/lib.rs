@@ -34,7 +34,7 @@ pub fn packages() -> std::result::Result<Vec<ferrum_meta::Package>, ferrum_meta:
 
 /// Registers this app's document hooks, and the portal's "Your home".
 pub fn register(hooks: &mut HookRegistry) {
-    hooks.register("Lease", Arc::new(leases::LeaseHook)).register("MaintenanceRequest", Arc::new(requests::RequestHook));
+    hooks.register("Lease", Arc::new(leases::LeaseHook)).register("RepairRequest", Arc::new(requests::RequestHook));
     hooks.add_site("property", Arc::new(site::PropertySite));
 }
 
@@ -79,7 +79,7 @@ pub(crate) fn date(doc: &Doc, k: &str) -> Option<NaiveDate> {
 /// active lease lets it.
 pub(crate) async fn refresh_unit(k: &Kernel, ctx: &Ctx, tx: &mut Tx, unit: Uuid) -> Result<()> {
     let (urgent, let_now): (bool, bool) = sqlx::query_as(
-        "select exists(select 1 from e_maintenance_request where tenant_id = $1 and unit = $2 and priority = 'Urgent' and status <> 'Done'), \
+        "select exists(select 1 from e_repair_request where tenant_id = $1 and unit = $2 and priority = 'Urgent' and status <> 'Done'), \
                 exists(select 1 from e_lease where tenant_id = $1 and unit = $2 and status = 'Active')",
     )
     .bind(ctx.tenant)

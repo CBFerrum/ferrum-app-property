@@ -108,9 +108,9 @@
     - {name: condition, type: select, options: [Good, Fair, Poor, Damaged], default: Good, required: true, in_list: true}
     - {name: note, type: data, in_list: true}
 
-- name: MaintenanceRequest
-  label: Maintenance Request
-  label_plural: Maintenance Requests
+- name: RepairRequest
+  label: Repair Request
+  label_plural: Repair Requests
   kind: master
   module: property
   title_field: summary

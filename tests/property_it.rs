@@ -256,26 +256,26 @@ async fn scenario() {
     assert_eq!(t.status(u101).await, "Let");
 
     // ───────────── maintenance ─────────────
-    let leak = uid(&t.insert(&fixer, "MaintenanceRequest", json!({"unit": u103.to_string(), "summary": "Burst pipe", "priority": "Urgent"})).await["id"]);
+    let leak = uid(&t.insert(&fixer, "RepairRequest", json!({"unit": u103.to_string(), "summary": "Burst pipe", "priority": "Urgent"})).await["id"]);
     assert_eq!(t.status(u103).await, "Under Maintenance");
-    let tap = uid(&t.insert(&fixer, "MaintenanceRequest", json!({"unit": u103.to_string(), "summary": "Dripping tap"})).await["id"]);
-    let wiring = uid(&t.insert(&fixer, "MaintenanceRequest", json!({"unit": u103.to_string(), "summary": "Loose wiring", "priority": "Urgent"})).await["id"]);
-    t.k.update(&fixer, "MaintenanceRequest", leak, obj(json!({"status": "Done"})), None).await.unwrap();
-    assert!(t.get("MaintenanceRequest", leak).await["done_on"].is_string(), "the day it was done is kept");
+    let tap = uid(&t.insert(&fixer, "RepairRequest", json!({"unit": u103.to_string(), "summary": "Dripping tap"})).await["id"]);
+    let wiring = uid(&t.insert(&fixer, "RepairRequest", json!({"unit": u103.to_string(), "summary": "Loose wiring", "priority": "Urgent"})).await["id"]);
+    t.k.update(&fixer, "RepairRequest", leak, obj(json!({"status": "Done"})), None).await.unwrap();
+    assert!(t.get("RepairRequest", leak).await["done_on"].is_string(), "the day it was done is kept");
     assert_eq!(t.status(u103).await, "Under Maintenance", "another urgent request is open");
-    t.k.update(&fixer, "MaintenanceRequest", wiring, obj(json!({"status": "In Progress"})), None).await.unwrap();
+    t.k.update(&fixer, "RepairRequest", wiring, obj(json!({"status": "In Progress"})), None).await.unwrap();
     assert_eq!(t.status(u103).await, "Under Maintenance");
-    t.k.update(&fixer, "MaintenanceRequest", wiring, obj(json!({"status": "Done"})), None).await.unwrap();
+    t.k.update(&fixer, "RepairRequest", wiring, obj(json!({"status": "Done"})), None).await.unwrap();
     assert_eq!(t.status(u103).await, "Vacant", "back in service; a normal request does not hold it");
-    assert!(t.get("MaintenanceRequest", tap).await["done_on"].is_null());
+    assert!(t.get("RepairRequest", tap).await["done_on"].is_null());
     // A let unit goes back to let; a request moved to another unit takes the hold with it.
     let lease3 = uid(&t.insert(&manager, "Lease", lease(u103, ana, "2026-10-01", "2027-09-30", "28000", "Monthly", json!([]))).await["id"]);
     t.k.run_action(&manager, "Lease", lease3, "activate", Value::Null).await.unwrap();
-    let boiler = uid(&t.insert(&fixer, "MaintenanceRequest", json!({"unit": u103.to_string(), "summary": "No hot water", "priority": "Urgent"})).await["id"]);
+    let boiler = uid(&t.insert(&fixer, "RepairRequest", json!({"unit": u103.to_string(), "summary": "No hot water", "priority": "Urgent"})).await["id"]);
     assert_eq!(t.status(u103).await, "Under Maintenance");
-    t.k.update(&fixer, "MaintenanceRequest", boiler, obj(json!({"unit": u102.to_string()})), None).await.unwrap();
+    t.k.update(&fixer, "RepairRequest", boiler, obj(json!({"unit": u102.to_string()})), None).await.unwrap();
     assert_eq!((t.status(u103).await, t.status(u102).await), ("Let".to_string(), "Under Maintenance".to_string()));
-    t.k.update(&fixer, "MaintenanceRequest", boiler, obj(json!({"status": "Done"})), None).await.unwrap();
+    t.k.update(&fixer, "RepairRequest", boiler, obj(json!({"status": "Done"})), None).await.unwrap();
     assert_eq!(t.status(u102).await, "Vacant");
 
     // ───────────── who may do what ─────────────
@@ -316,7 +316,7 @@ async fn scenario() {
     // A repair in a unit she rents now, and none in another.
     let asked =
         call(&k, Some(&ana_p), "POST", "portal/requests", json!({"unit": u103.to_string(), "summary": "Window stuck", "priority": "Low"})).await.unwrap();
-    let req = t.get("MaintenanceRequest", uid(&asked["id"])).await;
+    let req = t.get("RepairRequest", uid(&asked["id"])).await;
     assert_eq!(
         (req["reported_by"].as_str(), req["unit"].as_str(), req["status"].as_str()),
         (Some("ana@harbour.test"), Some(u103.to_string().as_str()), Some("Open"))
@@ -335,7 +335,7 @@ async fn scenario() {
     let urgent =
         call(&k, Some(&ana_p), "POST", "portal/requests", json!({"unit": u103.to_string(), "summary": "Gas smell", "priority": "Urgent"})).await.unwrap();
     assert_eq!(t.status(u103).await, "Under Maintenance", "an urgent request from the portal holds the unit too");
-    t.k.update(&fixer, "MaintenanceRequest", uid(&urgent["id"]), obj(json!({"status": "Done"})), None).await.unwrap();
+    t.k.update(&fixer, "RepairRequest", uid(&urgent["id"]), obj(json!({"status": "Done"})), None).await.unwrap();
     let home = call(&k, Some(&ana_p), "GET", "portal/home", Value::Null).await.unwrap();
     let mut asked: Vec<(String, String)> =
         home["requests"].as_array().unwrap().iter().map(|r| (r["summary"].as_str().unwrap().into(), r["status"].as_str().unwrap().into())).collect();

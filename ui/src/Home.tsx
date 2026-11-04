@@ -43,7 +43,7 @@ export function Home() {
         rows("Building", [], { sort: "building_name asc" }),
         rows("Unit", [], { sort: "unit_number asc" }),
         rows("Lease", [["status", "eq", "Active"]]),
-        rows("MaintenanceRequest", [["status", "neq", "Done"]]),
+        rows("RepairRequest", [["status", "neq", "Done"]]),
       ]);
       return { buildings, units, leases, requests };
     },
@@ -91,7 +91,7 @@ export function Home() {
           <ul className="stack">
             {open.map((r) => (
               <li key={r.id}>
-                <Link to={`/e/MaintenanceRequest/${r.id}`}>
+                <Link to={`/e/RepairRequest/${r.id}`}>
                   {String(r.number ?? "")} · {String(r.summary)} {r.priority === "Urgent" ? "· urgent" : ""}
                 </Link>
               </li>
