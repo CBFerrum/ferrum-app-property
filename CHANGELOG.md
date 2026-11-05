@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.5
+
+Rebuilt with Ferrum-Frontend 00dea07: in a workflow state that names what may change, the other fields show read-only, and the fields the state needs show required.
+
 ## 0.1.4
 
 Personal-data requests find the repairs a person reported; erasure takes their address off them, and the repairs stay (Ferrum's FERRUM-PRIVACY-002).
