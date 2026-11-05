@@ -33,3 +33,6 @@ roles:
       - {entity: Unit, read: true}
       - {entity: Inspection, read: true, write: true, create: true}
       - {entity: RepairRequest, read: true, write: true, create: true}
+
+personal_data:
+  - {entity: RepairRequest, match: reported_by, erase: [reported_by]}
