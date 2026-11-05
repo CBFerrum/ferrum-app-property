@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.4
+
+Personal-data requests find the repairs a person reported; erasure takes their address off them, and the repairs stay (Ferrum's FERRUM-PRIVACY-002).
+
 ## 0.1.3
 
 Rebuilt with Ferrum-Frontend daeadda: after an action runs, a record page shows what the action said it did rather than only that it is done.
