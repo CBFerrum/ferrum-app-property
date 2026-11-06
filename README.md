@@ -119,6 +119,7 @@ cd ui && npm run build && npm run check
 
 | Version | Highlights |
 |---|---|
+| **0.7.2** | Reconciled against what was invoiced, to the cent; index reviews say what held the rise back; Owners in the settings. |
 | **0.7.1** | Rebuilt with Ferrum-Frontend a76295e: times on a person's own clock when they chose one. Today is the workspace's day, not UTC's. |
 | **0.7.0** | Owners' statements: rent collected less the management fee and the expenses charged, billed to the company as the owner's share, and seen on the portal. |
 | **0.6.0** | Service charge budgets: shared costs by floor area, invoiced with the rent, reconciled once the year is over. |

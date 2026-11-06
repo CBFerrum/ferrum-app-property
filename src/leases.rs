@@ -177,6 +177,21 @@ pub(crate) fn indexed(rent: Decimal, base: Decimal, now: Decimal, cap: Option<De
     round(rent * (Decimal::ONE_HUNDRED + rise) / Decimal::ONE_HUNDRED, 2)
 }
 
+/// What held an index's rise back, for the review's note: its cap, its floor, or that a rent does not
+/// fall without one.
+pub(crate) fn bound(base: Decimal, now: Decimal, cap: Option<Decimal>, floor: Option<Decimal>) -> Option<String> {
+    if base <= Decimal::ZERO {
+        return None;
+    }
+    let rise = (now / base - Decimal::ONE) * Decimal::ONE_HUNDRED;
+    match (cap, floor) {
+        (Some(cap), _) if rise > cap => Some(format!("held to its cap of {}%", cap.normalize())),
+        (_, Some(floor)) if rise < floor => Some(format!("held to its floor of {}%", floor.normalize())),
+        (_, None) if rise < Decimal::ZERO => Some("not lowered without a floor".into()),
+        _ => None,
+    }
+}
+
 /// An indexed lease's yearly review for the period starting `from`: on the last anniversary of its
 /// start on or before it, its rent follows the index since the anniversary before (or its start),
 /// unless a review from that day or later was made. The review, to keep with the others.
@@ -199,7 +214,8 @@ async fn index_review(k: &Kernel, ctx: &Ctx, tx: &mut Tx, lease: &Doc, from: Nai
     let rent = indexed(rent_on(lease, on - Duration::days(1)), base, now, cap, floor);
     let name = s(&published, "index_name").unwrap_or("its index");
     Ok(Some(obj(
-        json!({"effective_from": on.to_string(), "rent": money(rent), "note": format!("Indexed to {name}: {} over {}", now.normalize(), base.normalize())}),
+        json!({"effective_from": on.to_string(), "rent": money(rent), "note": format!("Indexed to {name}: {} over {}{}", now.normalize(), base.normalize(),
+              bound(base, now, cap, floor).map(|b| format!(", {b}")).unwrap_or_default())}),
     )))
 }
 
@@ -601,7 +617,7 @@ async fn late_fees(k: &Kernel, ctx: &Ctx, tx: &mut Tx, company: Uuid, currency: 
 
 #[cfg(test)]
 mod tests {
-    use super::{days_of, indexed, last_day, months_of, period_end, rent_on, share};
+    use super::{bound, days_of, indexed, last_day, months_of, period_end, rent_on, share};
     use chrono::NaiveDate;
     use rust_decimal::Decimal;
     use serde_json::json;
@@ -615,6 +631,12 @@ mod tests {
         assert_eq!(indexed(n("10000"), n("100"), n("97"), None, Some(n("-2"))), n("9800"), "a fall down to the floor");
         assert_eq!(indexed(n("10000"), n("100"), n("100.5"), None, Some(n("1"))), n("10100"), "at least the floor");
         assert_eq!(indexed(n("10000"), n("0"), n("100"), None, None), n("10000"), "no base, no change");
+        // The review's note says what held the rise back.
+        assert_eq!(bound(n("100"), n("106"), Some(n("4")), None).as_deref(), Some("held to its cap of 4%"));
+        assert_eq!(bound(n("100"), n("97"), None, Some(n("-2"))).as_deref(), Some("held to its floor of -2%"));
+        assert_eq!(bound(n("100"), n("100.5"), None, Some(n("1"))).as_deref(), Some("held to its floor of 1%"));
+        assert_eq!(bound(n("106"), n("102"), None, None).as_deref(), Some("not lowered without a floor"));
+        assert_eq!((bound(n("100"), n("103"), Some(n("4")), None), bound(n("0"), n("1"), None, None)), (None, None));
     }
 
     #[test]
