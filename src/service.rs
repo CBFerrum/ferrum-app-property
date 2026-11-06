@@ -2,8 +2,9 @@
 //! floor area. A lease that pays service charge is invoiced its unit's share with its rent, each
 //! period's line the period's days of the year at the rate of the budget in use on its first day.
 //! Once the year is over, the budget is reconciled with what was spent: each such lease's share of
-//! the difference, for its days within the year, is invoiced to its lessee, or credited against its
-//! latest invoice of the year that was issued.
+//! what was spent, for its days within the year, against what its invoices bore for those days (each
+//! period's line was rounded on its own), is invoiced to its lessee, or credited against its latest
+//! invoice of the year that was issued.
 
 use crate::leases::last_day;
 use crate::{date, obj};
@@ -55,12 +56,31 @@ pub(crate) async fn service_for(tx: &mut Tx, tenant: Uuid, lease: &Doc, on: Naiv
     Ok(Some(Service { item, annual: budget * area / total, year_days: (to - from).num_days() + 1 }))
 }
 
-/// A lease's balance for a year of `year_days` days it held `days` of: (charged, due, difference),
-/// its unit's `share` of `budget` against `actual`, to the cent.
-pub(crate) fn balance(budget: Decimal, actual: Decimal, share: Decimal, days: i64, year_days: i64) -> (Decimal, Decimal, Decimal) {
-    let part = |total: Decimal| round(total * share * Decimal::from(days) / Decimal::from(year_days.max(1)), 2);
-    let (charged, due) = (part(budget), part(actual));
-    (charged, due, due - charged)
+/// A lease's balance for a year of `year_days` days it held `days` of: (due, difference), its unit's
+/// `share` of `actual` against what it was `charged`, to the cent.
+pub(crate) fn balance(charged: Decimal, actual: Decimal, share: Decimal, days: i64, year_days: i64) -> (Decimal, Decimal) {
+    let due = round(actual * share * Decimal::from(days) / Decimal::from(year_days.max(1)), 2);
+    (due, due - charged)
+}
+
+/// What a lease was charged for service over a year: the `item` lines its rent invoices bore, less
+/// what their credit notes took back, each for its period's days within the year. Cancelled
+/// invoices bear nothing.
+async fn charged(tx: &mut Tx, tenant: Uuid, lease: Uuid, item: Uuid, (from, to): (NaiveDate, NaiveDate)) -> Result<Decimal> {
+    let sum: Option<Decimal> = sqlx::query_scalar(
+        "select sum(i.amount * (least(r.period_to, $5) - greatest(r.period_from, $4) + 1) / (r.period_to - r.period_from + 1)) \
+         from e_rent_invoice r join e_sales_invoice si on si.tenant_id = r.tenant_id and si.id in (r.sales_invoice, r.credit_note) \
+         join e_sales_invoice__items i on i.tenant_id = si.tenant_id and i.parent_id = si.id and i.item = $3 \
+         where r.tenant_id = $1 and r.lease = $2 and si.docstatus < 2 and r.period_from <= $5 and r.period_to >= $4",
+    )
+    .bind(tenant)
+    .bind(lease)
+    .bind(item)
+    .bind(from)
+    .bind(to)
+    .fetch_one(&mut **tx)
+    .await?;
+    Ok(round(sum.unwrap_or_default(), 2))
 }
 
 pub struct BudgetHook;
@@ -167,7 +187,6 @@ async fn reconcile(hc: &mut HookCtx<'_>, doc: &Doc, params: &Value) -> Result<Va
         .fetch_one(&mut **hc.tx)
         .await?;
     let total = total.filter(|t| *t > Decimal::ZERO).ok_or_else(|| Error::invalid("the building's units have no floor area to share by"))?;
-    let budget = d(doc, "budget");
     let year_days = (year_to - year_from).num_days() + 1;
     let system = elevated(hc.ctx);
     let leases: Vec<Uuid> = sqlx::query_scalar(
@@ -192,7 +211,8 @@ async fn reconcile(hc: &mut HookCtx<'_>, doc: &Doc, params: &Value) -> Result<Va
         if days <= 0 {
             continue;
         }
-        let (charged, due, difference) = balance(budget, actual, share, days, year_days);
+        let charged = charged(hc.tx, hc.ctx.tenant, lease_id, item, (year_from, year_to)).await?;
+        let (due, difference) = balance(charged, actual, share, days, year_days);
         let what = format!("Service charge balance, {year_from} to {year_to}: {days} days of a {}% share", round(share * Decimal::ONE_HUNDRED, 2));
         let (document, note) = if difference > Decimal::ZERO {
             let inv = hc
@@ -254,12 +274,14 @@ mod tests {
     #[test]
     fn each_lease_its_share_of_the_difference() {
         let n = |v: &str| v.parse::<Decimal>().unwrap();
-        // A 60% share of a 10950 budget for the whole year, 9855 spent: 657 back.
-        assert_eq!(balance(n("10950"), n("9855"), n("0.6"), 365, 365), (n("6570"), n("5913"), n("-657")));
-        // A 40% share for 184 days: 2208 charged, 1987.20 due.
-        assert_eq!(balance(n("10950"), n("9855"), n("0.4"), 184, 365), (n("2208"), n("1987.2"), n("-220.8")));
+        // A 60% share for the whole year, charged 6570, 9855 spent: 657 back.
+        assert_eq!(balance(n("6570"), n("9855"), n("0.6"), 365, 365), (n("5913"), n("-657")));
+        // A 40% share for 184 days, charged 2208: 1987.20 due.
+        assert_eq!(balance(n("2208"), n("9855"), n("0.4"), 184, 365), (n("1987.2"), n("-220.8")));
         // More spent than budgeted: owed.
-        assert_eq!(balance(n("10950"), n("12045"), n("0.6"), 365, 365).2, n("657"));
+        assert_eq!(balance(n("6570"), n("12045"), n("0.6"), 365, 365).1, n("657"));
+        // Twelve months each rounded bore a cent more than a third of 1000: a cent back.
+        assert_eq!(balance(n("333.34"), n("1000"), n("1") / n("3"), 365, 365), (n("333.33"), n("-0.01")));
         let sv = Service { item: Uuid::nil(), annual: n("6570"), year_days: 365 };
         assert_eq!((sv.for_days(31), sv.for_days(28), sv.for_days(365)), (n("558"), n("504"), n("6570")), "18 a day");
     }
