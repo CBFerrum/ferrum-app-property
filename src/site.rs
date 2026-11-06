@@ -130,9 +130,9 @@ const MONTHS: usize = 12;
 const REPAIRS: usize = 50;
 
 /// `GET portal/owner`: the buildings naming the caller as their owner, each with its units and the
-/// lease letting each now; the rent, charges and late fees invoiced and still owed, by the month
-/// their period starts in (issued invoices only, the latest twelve months with any); and its repairs
-/// open or done in the last 90 days.
+/// lease letting each now; the rent, charges and late fees invoiced, less what was given back, and
+/// still owed, by the month their period starts in (issued invoices only, the latest twelve months
+/// with any); and its repairs open or done in the last 90 days.
 async fn owner(k: &Kernel, user: &Ctx) -> Result<Value> {
     let email = user.email.to_lowercase();
     if email.is_empty() {
@@ -164,7 +164,7 @@ async fn owner(k: &Kernel, user: &Ctx) -> Result<Value> {
         "select u.building, to_char(r.period_from, 'YYYY-MM'), trim_scale(coalesce(sum(si.grand_total), 0))::text, trim_scale(coalesce(sum(si.outstanding_amount), 0))::text \
          from e_rent_invoice r join e_lease l on l.tenant_id = r.tenant_id and l.id = r.lease \
          join e_unit u on u.tenant_id = l.tenant_id and u.id = l.unit \
-         join e_sales_invoice si on si.tenant_id = r.tenant_id and si.docstatus = 1 and (si.id = r.sales_invoice or si.id = r.late_fee_invoice) \
+         join e_sales_invoice si on si.tenant_id = r.tenant_id and si.docstatus = 1 and si.id in (r.sales_invoice, r.late_fee_invoice, r.credit_note) \
          where r.tenant_id = $1 and u.building = any($2) group by 1, 2 order by 1, 2 desc",
     )
     .bind(tenant)
