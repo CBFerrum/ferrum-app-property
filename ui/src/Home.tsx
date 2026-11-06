@@ -3,7 +3,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
-import { api, docPath } from "@ferrum/client";
+import { api, docPath, todayIso } from "@ferrum/client";
 import { Badge, ErrorState, PageLoading, useShellTitle } from "@ferrum/kit";
 
 interface Row {
@@ -57,7 +57,7 @@ export function Home() {
   if (q.isPending) return <PageLoading />;
   if (q.isError) return <ErrorState error={q.error} onRetry={() => void q.refetch()} />;
   const grouped = byBuilding(q.data.units);
-  const ending = endingSoon(q.data.leases, new Date().toISOString().slice(0, 10));
+  const ending = endingSoon(q.data.leases, todayIso());
   const open = [...q.data.requests].sort((a, b) => Number(b.priority === "Urgent") - Number(a.priority === "Urgent"));
   return (
     <div className="np-page">
