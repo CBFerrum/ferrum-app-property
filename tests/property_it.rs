@@ -259,8 +259,11 @@ async fn scenario() {
     // Its days stay held: a lease over them is refused.
     let over = uid(&t.insert(&manager, "Lease", lease(u101, ana, "2026-09-01", "2026-12-31", "30000", "Monthly", json!([]))).await["id"]);
     refused(t.k.run_action(&manager, "Lease", over, "activate", Value::Null).await, "invalid", "let on some of these days");
-    // The days after it ended early are free.
-    let after = uid(&t.insert(&manager, "Lease", lease(u101, ana, "2026-10-01", "2026-12-31", "30000", "Monthly", json!([]))).await["id"]);
+    // The days after it ended early are free. Its rent is reviewed from 15 October, so the portals
+    // show 30500 from then on.
+    let mut terms_101 = lease(u101, ana, "2026-10-01", "2026-12-31", "30000", "Monthly", json!([]));
+    terms_101["rent_reviews"] = json!([{"effective_from": "2026-10-15", "rent": "30500"}]);
+    let after = uid(&t.insert(&manager, "Lease", terms_101).await["id"]);
     t.k.run_action(&manager, "Lease", after, "activate", Value::Null).await.expect("after the early end");
     assert_eq!(t.status(u101).await, "Let");
 
@@ -319,6 +322,8 @@ async fn scenario() {
     let want_leases: Vec<(String, String)> =
         [("101", "Active"), ("101", "Ended"), ("103", "Active")].iter().map(|(u, s)| (u.to_string(), s.to_string())).collect();
     assert_eq!(numbers, want_leases, "hers, past their draft; Bo's are not here");
+    let let_101 = home["leases"].as_array().unwrap().iter().find(|l| l["unit_number"] == "101" && l["status"] == "Active").unwrap();
+    assert_eq!(dec(&let_101["rent"]), 30500.0, "the rent in effect today, its review counted");
     let ended = home["leases"].as_array().unwrap().iter().find(|l| l["status"] == "Ended").unwrap();
     assert_eq!((ended["building"].as_str(), ended["invoices"].as_array().unwrap().len()), (Some("Harbour View"), 6));
     assert!(ended["invoices"].as_array().unwrap().iter().all(|i| i["invoice"].is_null() && i["issued"] == false), "drafts are not hers to open yet");
@@ -526,7 +531,11 @@ async fn scenario() {
             .collect();
     assert_eq!(units, want_units, "each unit with the lease letting it now");
     let now_101 = &harbour["units"][0]["lease"];
-    assert_eq!((now_101["starts_on"].as_str(), now_101["ends_on"].as_str(), dec(&now_101["rent"])), (Some("2026-10-01"), Some("2026-12-31"), 30000.0));
+    assert_eq!(
+        (now_101["starts_on"].as_str(), now_101["ends_on"].as_str(), dec(&now_101["rent"])),
+        (Some("2026-10-01"), Some("2026-12-31"), 30500.0),
+        "at its rent in effect today"
+    );
     // Only issued invoices, a late fee with its period, by the month the period starts in, newest first.
     let paid_month = t.find_one("RentInvoice", json!({"sales_invoice": issued.to_string()})).await["period_from"].as_str().unwrap()[..7].to_string();
     let by_month: Vec<(String, f64, f64)> =

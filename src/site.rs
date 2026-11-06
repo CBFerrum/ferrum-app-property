@@ -1,6 +1,7 @@
 //! Property's pages of the workspace's portal (Ferrum docs/plan/apps-ui.md §9.1), from
 //! `/api/app/property/portal/…`. "Your home" at `/portal/home/`: a lessee's leases with the rent
-//! invoiced, and the repairs they asked for. "Properties you own" at `/portal/owner/` (statements
+//! invoiced, and the repairs they asked for. A lease's rent is the one in effect on the workspace's
+//! day, its reviews counted. "Properties you own" at `/portal/owner/` (statements
 //! included, once billed): the buildings
 //! naming the caller's address as their owner's. Portal people hold no roles: their leases are those
 //! of the customers their address belongs to, and a request they raise runs as the system after
@@ -77,17 +78,20 @@ async fn leases(k: &Kernel, sctx: &Ctx, tx: &mut Tx, email: &str) -> Result<Vec<
     Ok(out)
 }
 
-/// `GET portal/home`: the caller's leases, each with its unit and the rent invoiced, and the repairs
-/// they asked for.
+/// `GET portal/home`: the caller's leases, each with its unit, its rent in effect today and the rent
+/// invoiced, and the repairs they asked for.
 async fn home(k: &Kernel, user: &Ctx) -> Result<Value> {
     let email = user.email.to_lowercase();
     if email.is_empty() {
         return Ok(json!({"leases": [], "requests": []}));
     }
     let sctx = sys(user);
+    let today = sctx.today();
     let mut tx = k.db.tenant_tx(user.tenant).await?;
     let mut out = vec![];
     for l in leases(k, &sctx, &mut tx, &email).await? {
+        // Whole, with its reviews: a list's rows come without them.
+        let lease = k.get_tx(&sctx, &mut tx, "Lease", id(&l, "id").ok_or_else(|| Error::internal("a lease without an id"))?, false).await?;
         let unit = match id(&l, "unit") {
             Some(u) => k.get_tx(&sctx, &mut tx, "Unit", u, false).await?,
             None => Doc::new(),
@@ -113,7 +117,7 @@ async fn home(k: &Kernel, user: &Ctx) -> Result<Value> {
             "id": s(&l, "id"), "number": s(&l, "number"), "status": s(&l, "status"),
             "unit": s(&l, "unit"), "unit_number": s(&unit, "unit_number"), "building": s(&building, "building_name"), "address": s(&building, "address"),
             "starts_on": s(&l, "starts_on"), "ends_on": s(&l, "ends_on"), "terminated_on": s(&l, "terminated_on"),
-            "rent": s(&l, "rent"), "frequency": s(&l, "frequency"),
+            "rent": crate::leases::rent_on(&lease, today).normalize().to_string(), "frequency": s(&l, "frequency"),
             "invoices": lines,
         }));
     }
@@ -133,9 +137,9 @@ const REPAIRS: usize = 50;
 const STATEMENTS: usize = 12;
 
 /// `GET portal/owner`: the buildings naming the caller as their owner, each with its units and the
-/// lease letting each now; the rent, charges and late fees invoiced, less what was given back, and
-/// still owed, by the month their period starts in (issued invoices only, the latest twelve months
-/// with any); and its repairs open or done in the last 90 days.
+/// lease letting each now at its rent in effect today; the rent, charges and late fees invoiced,
+/// less what was given back, and still owed, by the month their period starts in (issued invoices
+/// only, the latest twelve months with any); and its repairs open or done in the last 90 days.
 async fn owner(k: &Kernel, user: &Ctx) -> Result<Value> {
     let email = user.email.to_lowercase();
     if email.is_empty() {
@@ -154,13 +158,16 @@ async fn owner(k: &Kernel, user: &Ctx) -> Result<Value> {
     let units: Vec<(Uuid, Value)> = sqlx::query_as(
         "select u.building, jsonb_build_object('id', u.id, 'unit_number', u.unit_number, 'unit_type', u.unit_type, 'area', trim_scale(u.area)::text, 'status', u.status, \
            'lease', case when l.id is null then null else jsonb_build_object('number', l.number, 'lessee', c.customer_name, 'starts_on', l.starts_on, \
-             'ends_on', l.ends_on, 'leaving_on', l.leaving_on, 'rent', trim_scale(l.rent)::text, 'frequency', l.frequency) end) \
+             'ends_on', l.ends_on, 'leaving_on', l.leaving_on, 'frequency', l.frequency, \
+             'rent', trim_scale(coalesce((select r.rent from e_lease__rent_reviews r where r.tenant_id = l.tenant_id and r.parent_id = l.id \
+               and r.effective_from <= $3 order by r.effective_from desc limit 1), l.rent))::text) end) \
          from e_unit u left join e_lease l on l.tenant_id = u.tenant_id and l.unit = u.id and l.status = 'Active' \
          left join e_customer c on c.tenant_id = l.tenant_id and c.id = l.lessee \
          where u.tenant_id = $1 and u.building = any($2) order by u.unit_number, u.id",
     )
     .bind(tenant)
     .bind(&ids)
+    .bind(user.today())
     .fetch_all(&mut *tx)
     .await?;
     let months: Vec<(Uuid, Option<String>, String, String)> = sqlx::query_as(
