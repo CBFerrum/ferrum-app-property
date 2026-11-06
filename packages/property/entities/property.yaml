@@ -103,7 +103,7 @@
   kind: master
   module: property
   title_field: lease
-  description: One period of a lease, invoiced once.
+  description: One period of a lease, invoiced once; the days after the lease's last day given back when it ends sooner.
   fields:
     - {name: lease, type: link, to: Lease, required: true, read_only: true, in_list: true, in_filter: true}
     - {name: period_from, type: date, required: true, read_only: true, in_list: true}
@@ -111,6 +111,8 @@
     - {name: amount, type: currency, read_only: true, in_list: true}
     - {name: sales_invoice, type: link, to: SalesInvoice, read_only: true}
     - {name: late_fee_invoice, type: link, to: SalesInvoice, read_only: true, no_copy: true, description: "The fee charged when it was paid late"}
+    - {name: billed_to, type: date, read_only: true, no_copy: true, label: Billed Until, description: "The last day it is billed for, once the days after the lease's last day were given back"}
+    - {name: credit_note, type: link, to: SalesInvoice, read_only: true, no_copy: true, description: "What gave back the days after the lease's last day"}
   list: {columns: [lease, period_from, period_to, amount], sort: period_from desc}
 
 - name: Inspection

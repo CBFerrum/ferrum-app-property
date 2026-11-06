@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0
+
+Days given back when a lease ends sooner (FERRUM-INDUSTRY-008).
+
+- **End It Early** and **Give Notice** give back what was invoiced for the days after the lease's
+  new last day. An issued rent invoice gets a draft credit note against it in ERP, for those days'
+  share of each line (rent and each charge). A draft one is made again for the days before, or goes
+  with its period when the whole period comes after the last day.
+- A rent invoice keeps the last day it is billed for (Billed Until) and its credit note. The
+  actions say how many periods they gave back.
+- The owners' portal counts issued credit notes against the month they belong to.
+
 ## 0.3.0
 
 Owners on the portal (FERRUM-INDUSTRY-008).
