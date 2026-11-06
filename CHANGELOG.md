@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.6.0
+
+Service charges (FERRUM-INDUSTRY-008).
+
+- **Service Charge Budget:** a building's shared costs for a year (its costs' total is the budget).
+  Use It puts it in force, refused over another in use on the same days; it then keeps its
+  building, year and costs.
+- **Pays Service Charge** on a lease, kept as a term. Such a lease is invoiced its unit's share of
+  the building's budget (by floor area) with its rent: each period's line is its days of the year,
+  at the rate of the budget in use on its first day. Service Charge Item in the settings says what
+  it is invoiced as. Ending a lease early gives back its service charge with its rent.
+- **Reconcile**, once the year is over, takes what was spent. Each lease that paid service charge
+  that year is given its share of the difference for its days within the year: an invoice for more,
+  or a credit note against its latest issued invoice of the year for less, noted when there is
+  none. The budget keeps each balance and what was made for it.
+
 ## 0.5.0
 
 Rent indexed each year (FERRUM-INDUSTRY-008).
