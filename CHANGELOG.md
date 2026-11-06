@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.7.0
+
+Owners' statements (FERRUM-INDUSTRY-008).
+
+- **Owner Statement:** for a building and some days, what was collected on its rent invoices for
+  periods starting then (rent, charges and late fees paid; credit notes taken off), less the
+  management fee (the building's Management Fee %) and the expenses charged to the owner: repairs
+  of its units done then, at their new Cost, each on one statement only, and lines added by hand.
+  A draft is worked out again whenever it is saved, and two statements of a building never share a
+  day.
+- **Bill The Payout:** the owner's share becomes their purchase invoice to the company, from the
+  building's Owner In The Books (an ERP supplier), as the settings' Owner Payout Item, for accounts
+  to issue and pay as ERP pays bills. The statement is then kept as billed. Nothing is billed when
+  the fee and expenses come to more than was collected.
+- **On the portal:** Properties you own lists each building's billed statements, with what is still
+  to pay on the bill once accounts have issued it.
+- A building's Owner says that its owner must be a portal person (Administration, Users) to sign in,
+  which the walk of 6 November found unsaid.
+
 ## 0.6.0
 
 Service charges (FERRUM-INDUSTRY-008).

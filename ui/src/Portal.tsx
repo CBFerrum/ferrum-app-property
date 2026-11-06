@@ -1,7 +1,8 @@
 // Property's pages of the workspace's portal (Ferrum docs/plan/apps-ui.md §9.1). At /portal/home/: a
 // lessee's leases with the rent invoiced (each invoice opens on ERP's "Your invoices"), the repairs
 // they asked for, and a new request for a unit they rent now. At /portal/owner/: an owner's
-// buildings, with their units and leases, the rent invoiced and still owed, and repairs. Everything
+// buildings, with their units and leases, the rent invoiced and still owed, repairs, and the statements
+// billed to the company for their share. Everything
 // comes from /api/app/property/portal/…, which answers by the address the person signed in with.
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -204,9 +205,29 @@ export interface OwnerProperty {
   units: OwnerUnit[];
   rent: { month: string; invoiced: string; owed: string }[];
   repairs: { number?: string | null; unit_number?: string | null; summary?: string | null; priority?: string | null; status?: string | null; done_on?: string | null }[];
+  statements?: OwnerStatement[];
 }
 
 /** "2026-08" as its month and year, written where the browser is. */
+export interface OwnerStatement {
+  number: string;
+  period_from: string;
+  period_to: string;
+  collected: string;
+  fee_percent?: string | null;
+  management_fee: string;
+  expenses: string;
+  payout: string;
+  /** What is still to pay on the bill once accounts issued it; none before. */
+  still_to_pay?: string | null;
+}
+
+/** Where a statement's payout stands: waiting for accounts, paid, or what is still to pay. */
+export function payoutState(s: OwnerStatement): string {
+  if (s.still_to_pay === null || s.still_to_pay === undefined) return "Waiting for accounts";
+  return Number(s.still_to_pay) <= 0 ? "Paid" : `${s.still_to_pay} to pay`;
+}
+
 export function monthName(month: string, locale?: string): string {
   const [y, m] = month.split("-").map(Number);
   if (!y || !m || m > 12) return month;
@@ -314,6 +335,52 @@ function Owned({ p }: { p: OwnerProperty }) {
                     <td>{monthName(m.month)}</td>
                     <td className="num">{amount(m.invoiced)}</td>
                     <td className="num">{amount(m.owed)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+      {(p.statements ?? []).length > 0 && (
+        <>
+          <h3>Statements</h3>
+          <p className="faint">What was collected for the days, less the management fee and the expenses charged to you, and your share.</p>
+          <div className="table-wrap">
+            <table className="table">
+              <caption className="sr-only">The statements of {p.name}</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Days</th>
+                  <th scope="col" className="num">
+                    Collected
+                  </th>
+                  <th scope="col" className="num">
+                    Fee
+                  </th>
+                  <th scope="col" className="num">
+                    Expenses
+                  </th>
+                  <th scope="col" className="num">
+                    Your share
+                  </th>
+                  <th scope="col">Payout</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(p.statements ?? []).map((s) => (
+                  <tr key={s.number}>
+                    <td>
+                      {s.number} · {s.period_from} to {s.period_to}
+                    </td>
+                    <td className="num">{amount(s.collected)}</td>
+                    <td className="num">
+                      {amount(s.management_fee)}
+                      {s.fee_percent ? ` (${s.fee_percent}%)` : ""}
+                    </td>
+                    <td className="num">{amount(s.expenses)}</td>
+                    <td className="num">{amount(s.payout)}</td>
+                    <td>{payoutState(s)}</td>
                   </tr>
                 ))}
               </tbody>
