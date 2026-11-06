@@ -3,8 +3,10 @@
 //! end is ended by upkeep. Upkeep invoices each lease's periods once each, rent and the other
 //! charges, through ERP to the lessee, from its start up to today and its last day: a period cut
 //! short (at the end, or ended early) owes its days' share, and each period's rent is the one in
-//! effect on its first day, after any review. An issued rent invoice still owed past its due day
-//! and the days the settings allow is charged a late fee, once. A deposit is owed and held through
+//! effect on its first day, after any review. A lease ended early or on notice gives back what was
+//! invoiced for the days after its new last day: a credit note against an issued invoice, a draft
+//! made again for its days. An issued rent invoice still owed past its due day and the days the
+//! settings allow is charged a late fee, once. A deposit is owed and held through
 //! the books when the lease starts, and given back, less what was kept and why, once it is over.
 
 use crate::{date, obj, refresh_unit};
@@ -54,6 +56,94 @@ pub(crate) fn rent_on(lease: &Doc, day: NaiveDate) -> Decimal {
         .filter(|(from, _)| *from <= day)
         .max_by_key(|(from, _)| *from)
         .map_or_else(|| d(lease, "rent"), |(_, rent)| rent)
+}
+
+/// A period's invoice lines from `from` to `to`, a period cut short owing its days' share: the rent
+/// in effect on its first day, then each charge, as (item, what it comes to, what it is).
+pub(crate) fn period_lines(lease: &Doc, rent_item: Uuid, from: NaiveDate, to: NaiveDate) -> Vec<(Option<String>, Decimal, String)> {
+    let (days, whole) = days_of(from, to, months_of(s(lease, "frequency").unwrap_or("Monthly")));
+    let cut = if days < whole { format!(" ({days} of {whole} days)") } else { String::new() };
+    let what = |name: &str| format!("{name}, {from} to {to}{cut}");
+    let mut out = vec![(Some(rent_item.to_string()), share(rent_on(lease, from), days, whole), what("Rent"))];
+    out.extend(
+        rows(lease, "charges").iter().map(|c| (s(c, "item").map(str::to_string), share(d(c, "amount"), days, whole), what(s(c, "charge").unwrap_or("Charge")))),
+    );
+    out
+}
+
+/// Lines as an invoice takes them, `qty` of each (minus one on a credit note).
+fn invoice_lines(lines: &[(Option<String>, Decimal, String)], qty: &str) -> Vec<Value> {
+    lines
+        .iter()
+        .map(|(item, rate, what)| json!({"item": item, "qty": qty, "price_list_rate": money(*rate), "discount_percent": "0", "description": what}))
+        .collect()
+}
+
+/// What was invoiced for days after a lease's new last day, given back. An issued invoice gets a
+/// draft credit note against it, line by line, for what those days came to; a draft one is made
+/// again for the days before, or goes with its period when none are left. How many periods.
+async fn credit_after(k: &Kernel, ctx: &Ctx, tx: &mut Tx, lease: &Doc, last: NaiveDate) -> Result<usize> {
+    let me = id(lease, "id").ok_or_else(|| Error::internal("a lease without an id"))?;
+    let rent_item: Option<Uuid> = sqlx::query_scalar("select rent_item from e_property_settings where tenant_id = $1 limit 1")
+        .bind(ctx.tenant)
+        .fetch_optional(&mut **tx)
+        .await?
+        .flatten();
+    let Some(rent_item) = rent_item else { return Ok(0) };
+    let periods: Vec<(Uuid, NaiveDate, NaiveDate, Option<Uuid>)> = sqlx::query_as(
+        "select id, period_from, coalesce(billed_to, period_to), sales_invoice from e_rent_invoice where tenant_id = $1 and lease = $2 \
+         and coalesce(billed_to, period_to) > $3 order by period_from",
+    )
+    .bind(ctx.tenant)
+    .bind(me)
+    .bind(last)
+    .fetch_all(&mut **tx)
+    .await?;
+    let mut n = 0;
+    for (period, from, billed_to, invoice) in periods {
+        let Some(invoice) = invoice else { continue };
+        let si = k.get_tx(ctx, tx, "SalesInvoice", invoice, true).await?;
+        // The days it keeps: up to the last day, none when the period starts after it.
+        let to = last.max(from - Duration::days(1));
+        let kept = period_lines(lease, rent_item, from, to);
+        match si.get("docstatus").and_then(Value::as_i64) {
+            Some(1) => {
+                let billed = period_lines(lease, rent_item, from, billed_to);
+                let back: Vec<(Option<String>, Decimal, String)> = billed
+                    .into_iter()
+                    .zip(&kept)
+                    .map(|((item, was, what), (_, now, _))| (item, was - *now, format!("{what}: back for the days after {last}")))
+                    .filter(|(_, back, _)| *back > Decimal::ZERO)
+                    .collect();
+                if back.is_empty() {
+                    continue;
+                }
+                let note = k
+                    .insert_tx(
+                        ctx,
+                        tx,
+                        "SalesInvoice",
+                        obj(json!({"company": s(&si, "company"), "customer": s(&si, "customer"), "currency": s(&si, "currency"), "is_return": true,
+                                   "return_against": invoice.to_string(), "items": invoice_lines(&back, "-1"),
+                                   "remarks": format!("Lease {}: the days after its last day, {last}", s(lease, "number").unwrap_or_default())})),
+                    )
+                    .await?;
+                k.set_values_tx(ctx, tx, "RentInvoice", period, obj(json!({"billed_to": to.to_string(), "credit_note": note.get("id")}))).await?;
+            }
+            Some(0) if to < from => {
+                k.delete_tx(ctx, tx, "RentInvoice", period, None).await?;
+                k.delete_tx(ctx, tx, "SalesInvoice", invoice, None).await?;
+            }
+            Some(0) => {
+                k.update_tx(ctx, tx, "SalesInvoice", invoice, obj(json!({"items": invoice_lines(&kept, "1")})), None).await?;
+                let amount: Decimal = kept.iter().map(|l| l.1).sum();
+                k.set_values_tx(ctx, tx, "RentInvoice", period, obj(json!({"period_to": to.to_string(), "amount": money(amount)}))).await?;
+            }
+            _ => continue,
+        }
+        n += 1;
+    }
+    Ok(n)
 }
 
 /// The lease's last day: its end, or sooner when it was ended early or notice was given.
@@ -207,7 +297,8 @@ impl DocHook for LeaseHook {
                 }
                 let values = json!({"notice_given_on": on.to_string(), "notice_by": by, "leaving_on": leaving.to_string()});
                 hc.kernel.set_values_tx(&system, hc.tx, "Lease", lease, obj(values)).await?;
-                Ok(Some(json!({"leaving_on": leaving.to_string()})))
+                let credited = credit_after(hc.kernel, &system, hc.tx, doc, leaving).await?;
+                Ok(Some(json!({"leaving_on": leaving.to_string(), "periods_credited": credited})))
             }
             "review_rent" => {
                 let on = params
@@ -291,7 +382,8 @@ impl DocHook for LeaseHook {
                 }
                 hc.kernel.set_values_tx(&system, hc.tx, "Lease", lease, obj(json!({"status": "Terminated", "terminated_on": on.to_string()}))).await?;
                 refresh_unit(hc.kernel, &system, hc.tx, unit).await?;
-                Ok(Some(json!({"status": "Terminated"})))
+                let credited = credit_after(hc.kernel, &system, hc.tx, doc, on).await?;
+                Ok(Some(json!({"status": "Terminated", "periods_credited": credited})))
             }
             _ => Ok(None),
         }
@@ -328,7 +420,6 @@ pub(crate) async fn upkeep(k: &Kernel, tenant: Uuid, schema: Arc<Schema>, today:
         let doc = k.get_tx(&ctx, &mut tx, "Lease", lease, true).await?;
         let (Some(mut from), Some(end), Some(last)) = (date(&doc, "next_invoice_on"), date(&doc, "ends_on"), last_day(&doc)) else { continue };
         let months = months_of(s(&doc, "frequency").unwrap_or("Monthly"));
-        let charges = rows(&doc, "charges");
         while from <= today && from <= last {
             let Some(to) = period_end(from, months, last) else { break };
             // A period is invoiced once: its row says so.
@@ -339,15 +430,9 @@ pub(crate) async fn upkeep(k: &Kernel, tenant: Uuid, schema: Arc<Schema>, today:
                 .fetch_one(&mut *tx)
                 .await?;
             if !done {
-                // A period cut short owes its days' share; the rent is the one in effect on its first day.
-                let (days, whole) = days_of(from, to, months);
-                let cut = if days < whole { format!(" ({days} of {whole} days)") } else { String::new() };
-                let line = |item: Option<&str>, rate: Decimal, what: &str| json!({"item": item, "qty": "1", "price_list_rate": money(rate), "discount_percent": "0", "description": format!("{what}, {from} to {to}{cut}")});
-                let rent_item = rent_item.to_string();
-                let rent = share(rent_on(&doc, from), days, whole);
-                let mut items = vec![line(Some(&rent_item), rent, "Rent")];
-                items.extend(charges.iter().map(|c| line(s(c, "item"), share(d(c, "amount"), days, whole), s(c, "charge").unwrap_or("Charge"))));
-                let amount = rent + charges.iter().map(|c| share(d(c, "amount"), days, whole)).sum::<Decimal>();
+                let lines = period_lines(&doc, rent_item, from, to);
+                let amount: Decimal = lines.iter().map(|l| l.1).sum();
+                let items = invoice_lines(&lines, "1");
                 let remarks = format!("Lease {}, {from} to {to}", s(&doc, "number").unwrap_or_default());
                 let inv = k
                     .insert_tx(

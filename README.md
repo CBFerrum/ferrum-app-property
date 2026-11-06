@@ -34,6 +34,12 @@ Property and facilities for [Ferrum](https://github.com/CBFerrum/Ferrum):
 - **Ending.** A lease runs to its last day, then upkeep ends it and frees the unit. Ended early by
   agreement, on a day from its start to today, it frees the unit at once and is invoiced up to
   that day.
+- **Days given back.** A lease ended early, or by notice that runs out within a period already
+  invoiced, gives back what was invoiced for the days after its new last day:
+  - an issued invoice gets a draft credit note against it, for those days' share of each line;
+  - a draft invoice is made again for the days before, or goes with its period when none are left.
+
+  A period keeps the last day it is billed for and its credit note.
 - **Notice.** Either side gives notice, as the lease's notice days say. The lease then ends when
   the notice runs out: it is invoiced to that day, upkeep ends it, and the days after are free for
   another lease. Notice that would run past the lease's end is refused, since it runs to its end anyway.
@@ -73,6 +79,8 @@ cd ui && npm run build && npm run check
 - a quarterly lease cut at its end, paying for its days, and a lease ended early;
 - rent reviewed, notice that ends a lease with its last day's share, a late fee charged once, and
   a deposit held and given back less what was kept;
+- days invoiced past an early end given back: a credit note for an issued quarter, a drafted one
+  gone, and a drafted month made again for its days, twice;
 - urgent requests holding a unit;
 - who may do what;
 - the portal: only her leases, repairs only where she rents now; an owner sees only her building,
@@ -80,7 +88,6 @@ cd ui && npm run build && npm run check
 
 ## Not yet
 
-- A period already invoiced is not credited back when a lease ends early within it.
 - Escalation by index (rent reviews are amounts from given days).
 - Service-charge budgets shared across a building, and owners' statements with management fees,
   expenses and payouts.
@@ -90,6 +97,7 @@ cd ui && npm run build && npm run check
 
 | Version | Highlights |
 |---|---|
+| **0.4.0** | A lease ended early or on notice gives back what was invoiced for the days after its last day: a credit note against an issued invoice, a draft made again. |
 | **0.3.0** | Owners on the portal: their buildings' units, leases, rent invoiced and still owed, and repairs; dates by the workspace's day. |
 | **0.2.1** | Rebuilt with Ferrum-Frontend bb60115: empty numbers read as the server reads them; settings open as their record. |
 | **0.2.0** | Part periods paid for their days, rent reviews, notice, late fees, and deposits held and given back through the books. |
