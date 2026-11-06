@@ -19,6 +19,7 @@
     - {label: Late Payment, fields: [late_fee_item, late_fee_after_days, late_fee_amount, late_fee_percent]}
     - {label: Deposits, fields: [deposit_account, deposit_deductions_account]}
     - {label: Service Charges, fields: [service_charge_item]}
+    - {label: Owners, fields: [owner_payout_item]}
 
 - name: Building
   label: Property

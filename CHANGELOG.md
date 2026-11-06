@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.2
+
+Found walking it in a browser on 6 November.
+
+- A service-charge budget is reconciled against what each lease's invoices bore for the year:
+  their service lines, less what credit notes took back, each for its period's days within the
+  year. Each month's line is rounded on its own, so the budget's share worked out once could be a
+  cent or so off what was billed (504.11 against 504.10 in the walk).
+- A rent review made by an index says what held the rise back: "held to its cap of 3%", "held to
+  its floor of 1%", or "not lowered without a floor".
+- The settings show Owner Payout Item under its own heading, Owners.
+
 ## 0.7.1
 
 Rebuilt with Ferrum-Frontend a76295e: its pages show times on a person's own clock when they chose one on their Account page, while today and due dates stay on the workspace's day. Its pages count today on the workspace's day, not UTC's, so the day's figures are right in the evening west of Greenwich and the early morning east of it.

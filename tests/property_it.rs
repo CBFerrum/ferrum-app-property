@@ -681,8 +681,8 @@ async fn scenario() {
     assert_eq!(
         reviews,
         vec![
-            ("2027-01-01".to_string(), 10400.0, "Indexed to CPI: 106 over 100".to_string()),
-            ("2028-01-01".to_string(), 10400.0, "Indexed to CPI: 102 over 106".to_string())
+            ("2027-01-01".to_string(), 10400.0, "Indexed to CPI: 106 over 100, held to its cap of 4%".to_string()),
+            ("2028-01-01".to_string(), 10400.0, "Indexed to CPI: 102 over 106, not lowered without a floor".to_string())
         ]
     );
     let periods = t.periods(indexed).await;
@@ -748,4 +748,23 @@ async fn scenario() {
     assert_eq!(dec(&credit["items"][0]["price_list_rate"]), 657.0);
     assert!(reconciled["balances"][1]["note"].as_str().is_some_and(|n| n.starts_with("220.80 owed back")), "nothing issued to credit B's against");
     refused(t.k.run_action(&manager, "ServiceChargeBudget", budget, "reconcile", json!({"actual": "1"})).await, "invalid", "not available");
+    // Each month's line is rounded on its own, so a lease is reconciled against what its invoices
+    // bore: a third of 1000 over 2025 is 333.33 due, and its twelve months bore 333.34.
+    let pier = uid(&t.insert(&manager, "Building", json!({"building_name": "Pier House"})).await["id"]);
+    let room = |n: &str| json!({"unit_number": n, "building": pier.to_string(), "unit_type": "Office", "area": "10"});
+    let p1 = uid(&t.insert(&manager, "Unit", room("P1")).await["id"]);
+    for n in ["P2", "P3"] {
+        t.insert(&manager, "Unit", room(n)).await;
+    }
+    let cleaning = json!([{"head": "Cleaning", "amount": "1000"}]);
+    let pier_budget = uid(&t
+        .insert(&manager, "ServiceChargeBudget", json!({"building": pier.to_string(), "year_from": "2025-01-01", "year_to": "2025-12-31", "heads": cleaning}))
+        .await["id"]);
+    t.k.run_action(&manager, "ServiceChargeBudget", pier_budget, "activate_budget", Value::Null).await.expect("in use");
+    let lp = uid(&t.insert(&manager, "Lease", paying(p1, bo, "2025-01-01", "2025-12-31")).await["id"]);
+    t.k.run_action(&manager, "Lease", lp, "activate", Value::Null).await.unwrap();
+    ferrum_app_property::maintenance_on(&k, day("2026-01-05")).await.expect("upkeep");
+    t.k.run_action(&manager, "ServiceChargeBudget", pier_budget, "reconcile", json!({"actual": "1000"})).await.expect("reconciled");
+    let row = t.get("ServiceChargeBudget", pier_budget).await["balances"][0].clone();
+    assert_eq!((dec(&row["charged"]), dec(&row["due"]), dec(&row["difference"])), (333.34, 333.33, -0.01), "what its invoices bore");
 }
