@@ -92,7 +92,9 @@ impl DocHook for StatementHook {
             .filter(|l| id(l, "repair").is_none())
             .map(|mut l| {
                 // A row added by hand keeps its id, or is given one.
-                l.entry("id").or_insert_with(|| json!(Uuid::now_v7().to_string()));
+                if l.get("id").is_none_or(Value::is_null) {
+                    l.insert("id".into(), json!(Uuid::now_v7().to_string()));
+                }
                 Value::Object(l)
             })
             .collect();
