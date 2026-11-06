@@ -33,7 +33,8 @@ Property and facilities for [Ferrum](https://github.com/CBFerrum/Ferrum):
   its first day.
 - **Service charges.** A building's Service Charge Budget for a year lists its shared costs, and
   is shared among its units by floor area once in use. A lease that pays service charge is invoiced
-  its unit's share with its rent, each period's line its days of the year. Once the year is over,
+  its unit's share with its rent, each period's line its days in each budget year at that year's
+  rate (the next year's once its budget is in use, else the first's). Once the year is over,
   Reconcile takes what was spent and gives each such lease its share of the difference for its days
   within the year: an invoice for more, or a credit note against its latest issued invoice of the
   year for less, noted when there is none.
@@ -111,9 +112,8 @@ cd ui && npm run build && npm run check
 
 ## Not yet
 
-- Service charges are shared by floor area only (no weightings or schedules), the landlord bears
-  vacant units' shares, and a period crossing two budget years is charged at the rate of the year it
-  starts in. A statement's expenses are repairs and lines by hand: ERP's bills are not read for
+- Service charges are shared by floor area only (no weightings or schedules), and the landlord
+  bears vacant units' shares. A statement's expenses are repairs and lines by hand: ERP's bills are not read for
   them, and its fee is one percentage of what was collected.
 - Paying rent on the portal (ERP's invoices page shows what is due).
 
@@ -121,6 +121,7 @@ cd ui && npm run build && npm run check
 
 | Version | Highlights |
 |---|---|
+| **0.7.5** | A period across two budget years bears each year's days at that year's rate. |
 | **0.7.4** | Rebuilt with Ferrum-Frontend a64416a: a box whose default is 1 shows ticked; action dialogs say every refusal and ask once. |
 | **0.7.3** | The portals show a lease's rent in effect today, its reviews and indexing counted. |
 | **0.7.2** | Reconciled against what was invoiced, to the cent; index reviews say what held the rise back; Owners in the settings. |
