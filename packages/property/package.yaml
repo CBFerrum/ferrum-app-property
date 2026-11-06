@@ -9,7 +9,7 @@ modules:
     label: Property
     icon: building-2
     order: 51
-    items: [Lease, Unit, Building, RentInvoice, Inspection, RepairRequest, PropertySettings]
+    items: [Lease, Unit, Building, RentInvoice, Inspection, RepairRequest, RentIndex, PropertySettings]
 
 roles:
   - name: Property Manager
@@ -19,6 +19,7 @@ roles:
       - {entity: Building, read: true, write: true, create: true}
       - {entity: Unit, read: true, write: true, create: true, delete: true, export: true, import: true}
       - {entity: Lease, read: true, write: true, create: true, export: true}
+      - {entity: RentIndex, read: true, write: true, create: true}
       - {entity: RentInvoice, read: true, export: true}
       - {entity: Inspection, read: true, write: true, create: true}
       - {entity: RepairRequest, read: true, write: true, create: true}
