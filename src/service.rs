@@ -233,7 +233,7 @@ async fn reconcile(hc: &mut HookCtx<'_>, doc: &Doc, params: &Value) -> Result<Va
                         .await?;
                     (note.get("id").cloned(), None)
                 }
-                None => (None, Some(format!("{} owed back: no invoice of the year was issued to credit against", money(-difference)))),
+                None => (None, Some(format!("{:.2} owed back: no invoice of the year was issued to credit against", -difference))),
             }
         } else {
             (None, None)
