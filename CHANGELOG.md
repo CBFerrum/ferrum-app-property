@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.0
+
+Owners on the portal (FERRUM-INDUSTRY-008).
+
+- **Properties you own:** a building names its owner's address (Owner). Signed in to the
+  workspace's portal with it, the owner opens "Properties you own" at `/portal/owner/`
+  (`GET /api/app/property/portal/owner`): each of their buildings with its units, let or vacant,
+  and the lease letting each now (lessee, last day or the day notice runs out, rent); the rent,
+  charges and late fees invoiced and still owed, by the month their period starts, from issued
+  invoices only, the latest twelve months with any; and its repairs, open first, then those done
+  in the last 90 days. Anyone else sees no building.
+- **Personal data:** requests about a person find and blank a building's owner and manager
+  addresses.
+- **The workspace's day:** upkeep invoices and ends leases by each workspace's own day, and a
+  lease's notice or early end ("to today") and the day a repair was done use it too, not UTC's.
+
 ## 0.2.1
 
 Rebuilt with Ferrum-Frontend bb60115: a record page reads an empty number or check as the server does, so an action whose condition needs one shows, and a workspace's settings open as their one record.

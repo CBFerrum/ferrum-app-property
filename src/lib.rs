@@ -4,7 +4,8 @@
 //! * `leases`: a unit has one active lease at a time; activating one lets the unit, ending one frees
 //!   it; upkeep invoices each lease's periods once each, rent and charges, up to today and its end.
 //! * `requests`: an urgent maintenance request takes its unit out of service until it is done.
-//! * `site`: the portal's "Your home", a lessee's leases, rent invoiced and repairs asked for.
+//! * `site`: the portal's "Your home", a lessee's leases, rent invoiced and repairs asked for; and
+//!   "Properties you own", an owner's buildings with their units, leases, rent and repairs.
 //!
 //! This app's own design; no code was copied (docs/PROVENANCE.md). Hooks are registered per entity,
 //! so a workspace without the `property` package never runs them.
@@ -13,7 +14,7 @@ mod leases;
 mod requests;
 mod site;
 
-use chrono::{NaiveDate, Utc};
+use chrono::NaiveDate;
 use ferrum_domain::reports::ReportSource;
 use ferrum_domain::util::s;
 use ferrum_kernel::{Ctx, Doc, Error, HookRegistry, Kernel, Result, Tx};
@@ -32,7 +33,7 @@ pub fn packages() -> std::result::Result<Vec<ferrum_meta::Package>, ferrum_meta:
     ferrum_meta::catalog::load_embedded(EMBEDDED)
 }
 
-/// Registers this app's document hooks, and the portal's "Your home".
+/// Registers this app's document hooks, and the portal's pages.
 pub fn register(hooks: &mut HookRegistry) {
     hooks.register("Lease", Arc::new(leases::LeaseHook)).register("RepairRequest", Arc::new(requests::RequestHook));
     hooks.add_site("property", Arc::new(site::PropertySite));
@@ -43,13 +44,18 @@ pub fn reports() -> Vec<Arc<dyn ReportSource>> {
     vec![]
 }
 
-/// Upkeep: each active lease's due periods invoiced, and leases past their end ended.
+/// Upkeep: each active lease's due periods invoiced, and leases past their end ended, as of each
+/// workspace's own day.
 pub async fn maintenance(k: &Kernel) -> Result<()> {
-    maintenance_on(k, Utc::now().date_naive()).await
+    upkeep_all(k, None).await
 }
 
-/// [`maintenance`] as of `today`.
+/// [`maintenance`] as of `today` in every workspace.
 pub async fn maintenance_on(k: &Kernel, today: NaiveDate) -> Result<()> {
+    upkeep_all(k, Some(today)).await
+}
+
+async fn upkeep_all(k: &Kernel, day: Option<NaiveDate>) -> Result<()> {
     let mut tx = k.db.system_tx().await?;
     let tenants: Vec<Uuid> = sqlx::query_scalar("select id from tenant where status = 'active' order by id").fetch_all(&mut *tx).await?;
     tx.commit().await?;
@@ -57,6 +63,7 @@ pub async fn maintenance_on(k: &Kernel, today: NaiveDate) -> Result<()> {
     for tenant in tenants {
         match k.registry.schema(tenant).await {
             Ok(s) if s.packages.iter().any(|p| p == "property") => {
+                let today = day.unwrap_or_else(|| Ctx::system(tenant, s.clone()).today());
                 if let Err(e) = leases::upkeep(k, tenant, s, today).await {
                     first_error.get_or_insert(e);
                 }

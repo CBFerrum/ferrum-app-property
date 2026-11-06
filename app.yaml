@@ -1,8 +1,8 @@
 id: property
 name: Property
-version: 0.2.1
+version: 0.3.0
 publisher: cbferrum
-summary: "Buildings and units, leases with rent and charges invoiced each period through ERP, rent reviews, notice, late fees and deposits through the books, inspections and maintenance requests"
+summary: "Buildings and units, leases invoiced each period through ERP, rent reviews, notice, late fees and deposits through the books, repairs and inspections, and portal pages for lessees and owners"
 description: README.md
 categories: [industry, finance]
 license: AGPL-3.0-only
@@ -31,7 +31,8 @@ contributes:
   shell.create:
     - {id: lease, label: Lease, path: property/e/Lease/new, entity: Lease}
     - {id: request, label: Repair Request, path: property/e/RepairRequest/new, entity: RepairRequest}
-  # The workspace's portal: a lessee's leases, rent invoiced and repairs at /portal/home/ (the
-  # property package's endpoints).
+  # The workspace's portal (the property package's endpoints): a lessee's leases, rent invoiced and
+  # repairs at /portal/home/; an owner's buildings, units, leases, rent and repairs at /portal/owner/.
   shell.portal:
     - {id: home, title: Your home, description: "Your lease, the rent invoiced and repairs you asked for"}
+    - {id: owner, title: Properties you own, description: "For owners: units, leases, the rent invoiced and still owed, and repairs"}

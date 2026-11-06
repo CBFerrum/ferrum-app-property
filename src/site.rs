@@ -1,7 +1,9 @@
-//! Property's page of the workspace's portal (Ferrum docs/plan/apps-ui.md §9.1), "Your home" at
-//! `/portal/home/`, from `/api/app/property/portal/…`: a lessee's leases with the rent invoiced, and
-//! the repairs they asked for. Portal people hold no roles: their leases are those of the customers
-//! their address belongs to, and a request they raise runs as the system after these checks.
+//! Property's pages of the workspace's portal (Ferrum docs/plan/apps-ui.md §9.1), from
+//! `/api/app/property/portal/…`. "Your home" at `/portal/home/`: a lessee's leases with the rent
+//! invoiced, and the repairs they asked for. "Properties you own" at `/portal/owner/`: the buildings
+//! naming the caller's address as their owner's. Portal people hold no roles: their leases are those
+//! of the customers their address belongs to, and a request they raise runs as the system after
+//! these checks.
 
 use ferrum_domain::util::{b, id, s, sys};
 use ferrum_kernel::{Ctx, Doc, Error, Filter, Kernel, Result, Site, SiteRequest, SiteResponse, Tx, with_retry};
@@ -17,6 +19,7 @@ impl Site for PropertySite {
         let segs: Vec<&str> = req.path.split('/').filter(|p| !p.is_empty()).collect();
         let (status, out) = match (req.method.as_str(), segs.as_slice()) {
             ("GET", ["portal", "home"]) => (200, home(k, user).await?),
+            ("GET", ["portal", "owner"]) => (200, owner(k, user).await?),
             ("POST", ["portal", "requests"]) => (201, raise(k, user, &body(&req)?).await?),
             _ => return Err(Error::NotFound(format!("property endpoint {} {}", req.method, req.path))),
         };
@@ -120,6 +123,85 @@ async fn home(k: &Kernel, user: &Ctx) -> Result<Value> {
         .map(|r| json!({"id": s(r, "id"), "number": s(r, "number"), "unit": s(r, "unit"), "summary": s(r, "summary"), "priority": s(r, "priority"), "status": s(r, "status"), "done_on": s(r, "done_on")}))
         .collect();
     Ok(json!({"leases": out, "requests": requests}))
+}
+
+/// Months of rent an owner sees for each building, and repairs.
+const MONTHS: usize = 12;
+const REPAIRS: usize = 50;
+
+/// `GET portal/owner`: the buildings naming the caller as their owner, each with its units and the
+/// lease letting each now; the rent, charges and late fees invoiced and still owed, by the month
+/// their period starts in (issued invoices only, the latest twelve months with any); and its repairs
+/// open or done in the last 90 days.
+async fn owner(k: &Kernel, user: &Ctx) -> Result<Value> {
+    let email = user.email.to_lowercase();
+    if email.is_empty() {
+        return Ok(json!({"properties": []}));
+    }
+    let tenant = user.tenant;
+    let mut tx = k.db.tenant_tx(tenant).await?;
+    let buildings: Vec<(Uuid, Option<String>, Option<String>)> = sqlx::query_as(
+        "select id, building_name, address from e_building where tenant_id = $1 and lower(owner_email) = $2 order by building_name, id limit 100",
+    )
+    .bind(tenant)
+    .bind(email)
+    .fetch_all(&mut *tx)
+    .await?;
+    let ids: Vec<Uuid> = buildings.iter().map(|b| b.0).collect();
+    let units: Vec<(Uuid, Value)> = sqlx::query_as(
+        "select u.building, jsonb_build_object('id', u.id, 'unit_number', u.unit_number, 'unit_type', u.unit_type, 'area', trim_scale(u.area)::text, 'status', u.status, \
+           'lease', case when l.id is null then null else jsonb_build_object('number', l.number, 'lessee', c.customer_name, 'starts_on', l.starts_on, \
+             'ends_on', l.ends_on, 'leaving_on', l.leaving_on, 'rent', trim_scale(l.rent)::text, 'frequency', l.frequency) end) \
+         from e_unit u left join e_lease l on l.tenant_id = u.tenant_id and l.unit = u.id and l.status = 'Active' \
+         left join e_customer c on c.tenant_id = l.tenant_id and c.id = l.lessee \
+         where u.tenant_id = $1 and u.building = any($2) order by u.unit_number, u.id",
+    )
+    .bind(tenant)
+    .bind(&ids)
+    .fetch_all(&mut *tx)
+    .await?;
+    let months: Vec<(Uuid, Option<String>, String, String)> = sqlx::query_as(
+        "select u.building, to_char(r.period_from, 'YYYY-MM'), trim_scale(coalesce(sum(si.grand_total), 0))::text, trim_scale(coalesce(sum(si.outstanding_amount), 0))::text \
+         from e_rent_invoice r join e_lease l on l.tenant_id = r.tenant_id and l.id = r.lease \
+         join e_unit u on u.tenant_id = l.tenant_id and u.id = l.unit \
+         join e_sales_invoice si on si.tenant_id = r.tenant_id and si.docstatus = 1 and (si.id = r.sales_invoice or si.id = r.late_fee_invoice) \
+         where r.tenant_id = $1 and u.building = any($2) group by 1, 2 order by 1, 2 desc",
+    )
+    .bind(tenant)
+    .bind(&ids)
+    .fetch_all(&mut *tx)
+    .await?;
+    let repairs: Vec<(Uuid, Value)> = sqlx::query_as(
+        "select u.building, jsonb_build_object('number', r.number, 'unit_number', u.unit_number, 'summary', r.summary, 'priority', r.priority, \
+           'status', r.status, 'done_on', r.done_on) \
+         from e_repair_request r join e_unit u on u.tenant_id = r.tenant_id and u.id = r.unit \
+         where r.tenant_id = $1 and u.building = any($2) and (r.status is distinct from 'Done' or r.done_on >= $3) \
+         order by (r.status = 'Done'), r.created_at desc, r.id",
+    )
+    .bind(tenant)
+    .bind(&ids)
+    .bind(user.today() - chrono::Duration::days(90))
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    let properties: Vec<Value> = buildings
+        .iter()
+        .map(|(b, name, address)| {
+            let rent: Vec<Value> = months
+                .iter()
+                .filter(|m| m.0 == *b)
+                .take(MONTHS)
+                .map(|(_, month, invoiced, owed)| json!({"month": month, "invoiced": invoiced, "owed": owed}))
+                .collect();
+            json!({"id": b, "name": name, "address": address, "units": of(&units, *b, usize::MAX), "rent": rent, "repairs": of(&repairs, *b, REPAIRS)})
+        })
+        .collect();
+    Ok(json!({"properties": properties}))
+}
+
+/// Building `b`'s rows, at most `most` of them.
+fn of(rows: &[(Uuid, Value)], b: Uuid, most: usize) -> Vec<Value> {
+    rows.iter().filter(|r| r.0 == b).take(most).map(|r| r.1.clone()).collect()
 }
 
 /// `POST portal/requests` `{unit, summary, details?, priority?}`: a repair asked for in a unit the
