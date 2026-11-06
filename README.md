@@ -121,6 +121,7 @@ cd ui && npm run build && npm run check
 
 | Version | Highlights |
 |---|---|
+| **0.7.6** | Rebuilt with Ferrum-Frontend 63280d3: right to left, pages mirror; the records pages' words in Arabic and Hindi. |
 | **0.7.5** | A period across two budget years bears each year's days at that year's rate. |
 | **0.7.4** | Rebuilt with Ferrum-Frontend a64416a: a box whose default is 1 shows ticked; action dialogs say every refusal and ask once. |
 | **0.7.3** | The portals show a lease's rent in effect today, its reviews and indexing counted. |
