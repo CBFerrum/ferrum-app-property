@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.5.0
+
+Rent indexed each year (FERRUM-INDUSTRY-008).
+
+- **Rent Index:** a published index (a consumer price index) with its value from each day on,
+  kept by a Property Manager.
+- **Indexed To**, **Most A Year** (a cap) and **Least A Year** (a floor) on a lease, kept as its
+  terms once it is active.
+- **Upkeep:** on each anniversary of an indexed lease's start, before the period it holds for is
+  invoiced, the rent follows the index's rise since the year before. It uses the index's latest
+  values on those two days, at most the cap, and at least the floor; it never falls when there is
+  no floor. The change is kept as a rent review naming the values ("Indexed to CPI: 106 over
+  100"), so the periods from that day are invoiced at it. A review made by hand from the
+  anniversary on stands instead.
+
 ## 0.4.1
 
 Rebuilt with Ferrum-Frontend 24c3951: its pages show times on the workspace's clock, naming the zone when it is not the browser's, a draft numbered on submit is headed as a draft, and a record of an app that is not installed says so.

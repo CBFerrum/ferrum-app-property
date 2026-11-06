@@ -603,4 +603,41 @@ async fn scenario() {
     t.k.run_action(&manager, "Lease", months, "terminate", json!({"date": "2026-10-10"})).await.expect("ended sooner");
     assert_eq!(remade("to 2026-10-10 (10 of 31 days)", 10000.0).await, "2026-10-10");
     assert_eq!(t.periods(months).await[0], ("2026-09-01".to_string(), "2026-09-30".to_string(), 31000.0), "September as it was");
+
+    // ───────────── a rent indexed each year ─────────────
+    let cpi = uid(
+        &t.insert(
+            &manager,
+            "RentIndex",
+            json!({"index_name": "CPI", "values": [{"month": "2026-01-01", "value": "100"}, {"month": "2027-01-01", "value": "106"}, {"month": "2028-01-01", "value": "102"}]}),
+        )
+        .await["id"],
+    );
+    let u107 = uid(&t.insert(&manager, "Unit", unit("107")).await["id"]);
+    let mut terms = lease(u107, bo, "2026-01-01", "2028-12-31", "10000", "Monthly", json!([]));
+    terms["rent_index"] = json!(cpi.to_string());
+    terms["index_cap"] = json!("4");
+    let indexed = uid(&t.insert(&manager, "Lease", terms).await["id"]);
+    t.k.run_action(&manager, "Lease", indexed, "activate", Value::Null).await.unwrap();
+    refused(t.k.update(&manager, "Lease", indexed, obj(json!({"index_cap": "10"})), None).await, "invalid", "keeps its terms");
+    // A year on, its rent follows the index's 6%, held to its 4% cap; the year after, the index falls
+    // and the rent does not.
+    ferrum_app_property::maintenance_on(&k, day("2027-01-15")).await.expect("upkeep");
+    ferrum_app_property::maintenance_on(&k, day("2028-01-15")).await.expect("upkeep");
+    let reviews: Vec<(String, f64, String)> = t.get("Lease", indexed).await["rent_reviews"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| (r["effective_from"].as_str().unwrap().to_string(), dec(&r["rent"]), r["note"].as_str().unwrap_or_default().to_string()))
+        .collect();
+    assert_eq!(
+        reviews,
+        vec![
+            ("2027-01-01".to_string(), 10400.0, "Indexed to CPI: 106 over 100".to_string()),
+            ("2028-01-01".to_string(), 10400.0, "Indexed to CPI: 102 over 106".to_string())
+        ]
+    );
+    let periods = t.periods(indexed).await;
+    let amount = |from: &str| periods.iter().find(|p| p.0 == from).map(|p| p.2);
+    assert_eq!((amount("2026-12-01"), amount("2027-01-01"), amount("2028-01-01")), (Some(10000.0), Some(10400.0), Some(10400.0)), "{periods:?}");
 }

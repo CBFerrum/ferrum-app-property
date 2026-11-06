@@ -31,6 +31,10 @@ Property and facilities for [Ferrum](https://github.com/CBFerrum/Ferrum):
 - **Rent reviews.** A lease lists the rent from given days on: set in its draft, or reviewed while
   it runs, from the next period to invoice on. Each period is invoiced at the rent in effect on
   its first day.
+- **Indexed rent.** A lease may follow a Rent Index (a consumer price index, with its value from
+  each day on). On each anniversary of its start, its rent follows the index's rise since the year
+  before, by its latest values on those days, within a cap, and never falling unless a floor says
+  how far. The change is kept as a rent review that names the values.
 - **Ending.** A lease runs to its last day, then upkeep ends it and frees the unit. Ended early by
   agreement, on a day from its start to today, it frees the unit at once and is invoiced up to
   that day.
@@ -88,7 +92,6 @@ cd ui && npm run build && npm run check
 
 ## Not yet
 
-- Escalation by index (rent reviews are amounts from given days).
 - Service-charge budgets shared across a building, and owners' statements with management fees,
   expenses and payouts.
 - Paying rent on the portal (ERP's invoices page shows what is due).
@@ -97,6 +100,7 @@ cd ui && npm run build && npm run check
 
 | Version | Highlights |
 |---|---|
+| **0.5.0** | Rent indexed each year: a Rent Index's values, a cap and a floor, kept as rent reviews. |
 | **0.4.1** | Rebuilt with Ferrum-Frontend 24c3951: times on the workspace's clock; drafts headed as drafts. |
 | **0.4.0** | A lease ended early or on notice gives back what was invoiced for the days after its last day: a credit note against an issued invoice, a draft made again. |
 | **0.3.0** | Owners on the portal: their buildings' units, leases, rent invoiced and still owed, and repairs; dates by the workspace's day. |
