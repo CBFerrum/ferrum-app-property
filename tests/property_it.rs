@@ -640,4 +640,64 @@ async fn scenario() {
     let periods = t.periods(indexed).await;
     let amount = |from: &str| periods.iter().find(|p| p.0 == from).map(|p| p.2);
     assert_eq!((amount("2026-12-01"), amount("2027-01-01"), amount("2028-01-01")), (Some(10000.0), Some(10400.0), Some(10400.0)), "{periods:?}");
+
+    // ───────────── service charges, budgeted and reconciled ─────────────
+    let service_item = uid(&t.insert(&a, "Item", item("SERVICE")).await["id"]);
+    t.k.update(&manager, "PropertySettings", settings, obj(json!({"service_charge_item": service_item.to_string()})), None).await.expect("invoiced as");
+    let works = uid(&t.insert(&manager, "Building", json!({"building_name": "Quay Works"})).await["id"]);
+    let office = |n: &str, area: &str| json!({"unit_number": n, "building": works.to_string(), "unit_type": "Office", "area": area});
+    let (wa, wb) = (uid(&t.insert(&manager, "Unit", office("A", "60")).await["id"]), uid(&t.insert(&manager, "Unit", office("B", "40")).await["id"]));
+    let heads = json!([{"head": "Cleaning", "amount": "7300"}, {"head": "Security", "amount": "3650"}]);
+    let budget = t
+        .insert(&manager, "ServiceChargeBudget", json!({"building": works.to_string(), "year_from": "2025-01-01", "year_to": "2025-12-31", "heads": heads}))
+        .await;
+    assert_eq!(dec(&budget["budget"]), 10950.0, "its costs' total: 30 a day");
+    let budget = uid(&budget["id"]);
+    t.k.run_action(&manager, "ServiceChargeBudget", budget, "activate_budget", Value::Null).await.expect("in use");
+    refused(
+        t.k.update(&manager, "ServiceChargeBudget", budget, obj(json!({"heads": [{"head": "Cleaning", "amount": "1"}]})), None).await,
+        "invalid",
+        "keeps its building, year and costs",
+    );
+    let paying = |u: Uuid, who: Uuid, from: &str, to: &str| {
+        let mut v = lease(u, who, from, to, "1000", "Monthly", json!([]));
+        v["pays_service_charge"] = json!(true);
+        v
+    };
+    let la = uid(&t.insert(&manager, "Lease", paying(wa, bo, "2025-01-01", "2025-12-31")).await["id"]);
+    let lb = uid(&t.insert(&manager, "Lease", paying(wb, cy, "2025-07-01", "2025-12-31")).await["id"]);
+    for l in [la, lb] {
+        t.k.run_action(&manager, "Lease", l, "activate", Value::Null).await.unwrap();
+    }
+    ferrum_app_property::maintenance_on(&k, day("2026-01-05")).await.expect("upkeep");
+    // Each month bears its days of the unit's share: 60% of 30 a day is 18, 40% is 12.
+    let month = |l: Uuid, from: &'static str| {
+        let t = &t;
+        async move { dec(&t.find_one("RentInvoice", json!({"lease": l.to_string(), "period_from": from})).await["amount"]) }
+    };
+    assert_eq!((month(la, "2025-01-01").await, month(la, "2025-02-01").await, month(lb, "2025-07-01").await), (1558.0, 1504.0, 1372.0));
+    // A's December issued; less was spent than budgeted.
+    let december = t.find_one("RentInvoice", json!({"lease": la.to_string(), "period_from": "2025-12-01"})).await;
+    let december = uid(&december["sales_invoice"]);
+    t.k.submit(&a, "SalesInvoice", december, None).await.expect("issued");
+    let done = t.k.run_action(&manager, "ServiceChargeBudget", budget, "reconcile", json!({"actual": "9855"})).await.expect("reconciled");
+    assert_eq!(done["leases"], 2);
+    let reconciled = t.get("ServiceChargeBudget", budget).await;
+    assert_eq!((reconciled["status"].as_str(), dec(&reconciled["actual"])), (Some("Reconciled"), 9855.0));
+    let balances: Vec<(Uuid, i64, f64, f64, f64)> = reconciled["balances"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| (uid(&r["lease"]), r["days"].as_i64().unwrap(), dec(&r["charged"]), dec(&r["due"]), dec(&r["difference"])))
+        .collect();
+    assert_eq!(balances, vec![(la, 365, 6570.0, 5913.0, -657.0), (lb, 184, 2208.0, 1987.2, -220.8)], "each its share of the difference, for its days");
+    let credit = t.get("SalesInvoice", uid(&reconciled["balances"][0]["document"])).await;
+    assert_eq!(
+        (credit["is_return"].as_bool(), credit["return_against"].as_str()),
+        (Some(true), Some(december.to_string().as_str())),
+        "credited against its December"
+    );
+    assert_eq!(dec(&credit["items"][0]["price_list_rate"]), 657.0);
+    assert!(reconciled["balances"][1]["note"].as_str().is_some_and(|n| n.starts_with("220.80 owed back")), "nothing issued to credit B's against");
+    refused(t.k.run_action(&manager, "ServiceChargeBudget", budget, "reconcile", json!({"actual": "1"})).await, "invalid", "not available");
 }
