@@ -121,6 +121,7 @@ cd ui && npm run build && npm run check
 
 | Version | Highlights |
 |---|---|
+| **0.7.4** | Rebuilt with Ferrum-Frontend a64416a: a box whose default is 1 shows ticked; action dialogs say every refusal and ask once. |
 | **0.7.3** | The portals show a lease's rent in effect today, its reviews and indexing counted. |
 | **0.7.2** | Reconciled against what was invoiced, to the cent; index reviews say what held the rise back; Owners in the settings. |
 | **0.7.1** | Rebuilt with Ferrum-Frontend a76295e: times on a person's own clock when they chose one. Today is the workspace's day, not UTC's. |
