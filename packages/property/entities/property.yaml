@@ -75,7 +75,7 @@
     - {name: activate, label: Activate It, permission: write, condition: "doc.status == 'Draft'"}
     - {name: terminate, label: End It Early, permission: write, condition: "doc.status == 'Active'", params: [{name: date, type: date, label: Last Day, required: true, description: "From the lease's start to today, as both sides agree"}]}
     - {name: give_notice, label: Give Notice, permission: write, condition: "doc.status == 'Active'", params: [{name: date, type: date, label: Given On, required: true, description: "From the lease's start to today"}, {name: by, type: select, options: [Lessee, Landlord], required: true, label: Given By}]}
-    - {name: review_rent, label: Review the Rent, permission: write, condition: "doc.status == 'Active'", params: [{name: date, type: date, label: From, required: true, description: "No sooner than the next period to invoice"}, {name: rent, type: currency, required: true, label: New Rent}, {name: note, type: data}]}
+    - {name: review_rent, label: Review the Rent, permission: write, condition: "doc.status == 'Active'", params: [{name: date, type: date, label: From, required: true, description: "No sooner than the next period to invoice"}, {name: rent, type: currency, required: true, label: New Rent}, {name: note, type: data, label: Note}]}
     - {name: return_deposit, label: Return the Deposit, permission: write, condition: "doc.status == 'Ended' || doc.status == 'Terminated'", params: [{name: kept, type: currency, label: Kept, description: "For damage or rent owed; nothing when empty"}, {name: why, type: text, label: Why It Was Kept}]}
   numbering: {template: "LSE-{YYYY}-{seq:5}"}
   list: {columns: [number, unit, lessee, starts_on, ends_on, rent, status], sort: starts_on desc}
