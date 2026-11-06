@@ -527,9 +527,9 @@ async fn scenario() {
     assert_eq!((now_101["starts_on"].as_str(), now_101["ends_on"].as_str(), dec(&now_101["rent"])), (Some("2026-10-01"), Some("2026-12-31"), 30000.0));
     // Only issued invoices, a late fee with its period, by the month the period starts in, newest first.
     let paid_month = t.find_one("RentInvoice", json!({"sales_invoice": issued.to_string()})).await["period_from"].as_str().unwrap()[..7].to_string();
-    let rent: Vec<(String, f64, f64)> =
+    let by_month: Vec<(String, f64, f64)> =
         harbour["rent"].as_array().unwrap().iter().map(|m| (m["month"].as_str().unwrap().into(), dec(&m["invoiced"]), dec(&m["owed"]))).collect();
-    assert_eq!(rent, vec![("2026-08".to_string(), 20900.0, 20900.0), (paid_month, 32000.0, 20000.0)], "rent and parking; rent and its fee");
+    assert_eq!(by_month, vec![("2026-08".to_string(), 20900.0, 20900.0), (paid_month, 32000.0, 20000.0)], "rent and parking; rent and its fee");
     // Repairs open first, then those done lately, with their units.
     let repairs: Vec<(String, String, String)> = harbour["repairs"]
         .as_array()
