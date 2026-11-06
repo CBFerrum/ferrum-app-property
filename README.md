@@ -64,12 +64,14 @@ Property and facilities for [Ferrum](https://github.com/CBFerrum/Ferrum):
   was done.
 - **Inspections.** Move-in, move-out and routine inspections, with a finding for each area.
 - **Your home, on the portal.** A lessee signs in to the workspace's portal and sees their leases
-  past their draft, the rent invoiced for each (opening on ERP's "Your invoices"), and the repairs
+  past their draft, each at its rent in effect today, the rent invoiced for each (opening on ERP's
+  "Your invoices"), and the repairs
   they asked for. They ask for a repair only in a unit they rent now; an urgent one holds the unit
   as any other does.
 - **Properties you own, on the portal.** A building names its owner's address. Signed in to the
   portal with it, the owner sees each of their buildings: its units, let or vacant, and the lease
-  letting each now (to whom, until when, at what rent); the rent, charges and late fees invoiced and
+  letting each now (to whom, until when, at its rent in effect today, reviews counted); the rent,
+  charges and late fees invoiced and
   still owed, by the month their period starts, from issued invoices only; and its repairs, open or
   done in the last 90 days. Nobody else's buildings, and nothing of a building without their
   address.
@@ -119,6 +121,7 @@ cd ui && npm run build && npm run check
 
 | Version | Highlights |
 |---|---|
+| **0.7.3** | The portals show a lease's rent in effect today, its reviews and indexing counted. |
 | **0.7.2** | Reconciled against what was invoiced, to the cent; index reviews say what held the rise back; Owners in the settings. |
 | **0.7.1** | Rebuilt with Ferrum-Frontend a76295e: times on a person's own clock when they chose one. Today is the workspace's day, not UTC's. |
 | **0.7.0** | Owners' statements: rent collected less the management fee and the expenses charged, billed to the company as the owner's share, and seen on the portal. |
