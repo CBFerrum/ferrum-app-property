@@ -31,6 +31,12 @@ Property and facilities for [Ferrum](https://github.com/CBFerrum/Ferrum):
 - **Rent reviews.** A lease lists the rent from given days on: set in its draft, or reviewed while
   it runs, from the next period to invoice on. Each period is invoiced at the rent in effect on
   its first day.
+- **Service charges.** A building's Service Charge Budget for a year lists its shared costs, and
+  is shared among its units by floor area once in use. A lease that pays service charge is invoiced
+  its unit's share with its rent, each period's line its days of the year. Once the year is over,
+  Reconcile takes what was spent and gives each such lease its share of the difference for its days
+  within the year: an invoice for more, or a credit note against its latest issued invoice of the
+  year for less, noted when there is none.
 - **Indexed rent.** A lease may follow a Rent Index (a consumer price index, with its value from
   each day on). On each anniversary of its start, its rent follows the index's rise since the year
   before, by its latest values on those days, within a cap, and never falling unless a floor says
@@ -92,14 +98,16 @@ cd ui && npm run build && npm run check
 
 ## Not yet
 
-- Service-charge budgets shared across a building, and owners' statements with management fees,
-  expenses and payouts.
+- Owners' statements with management fees, expenses and payouts. Service charges are shared by floor
+  area only (no weightings or schedules), the landlord bears vacant units' shares, and a period
+  crossing two budget years is charged at the rate of the year it starts in.
 - Paying rent on the portal (ERP's invoices page shows what is due).
 
 ## Changelog
 
 | Version | Highlights |
 |---|---|
+| **0.6.0** | Service charge budgets: shared costs by floor area, invoiced with the rent, reconciled once the year is over. |
 | **0.5.0** | Rent indexed each year: a Rent Index's values, a cap and a floor, kept as rent reviews. |
 | **0.4.1** | Rebuilt with Ferrum-Frontend 24c3951: times on the workspace's clock; drafts headed as drafts. |
 | **0.4.0** | A lease ended early or on notice gives back what was invoiced for the days after its last day: a credit note against an issued invoice, a draft made again. |

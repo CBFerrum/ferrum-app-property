@@ -4,6 +4,8 @@
 //! * `leases`: a unit has one active lease at a time; activating one lets the unit, ending one frees
 //!   it; upkeep invoices each lease's periods once each, rent and charges, up to today and its end.
 //! * `requests`: an urgent maintenance request takes its unit out of service until it is done.
+//! * `service`: a building's service charge budget shared among its units by floor area, invoiced
+//!   with the rent of the leases that pay it, and reconciled with what was spent.
 //! * `site`: the portal's "Your home", a lessee's leases, rent invoiced and repairs asked for; and
 //!   "Properties you own", an owner's buildings with their units, leases, rent and repairs.
 //!
@@ -12,6 +14,7 @@
 
 mod leases;
 mod requests;
+mod service;
 mod site;
 
 use chrono::NaiveDate;
@@ -35,7 +38,10 @@ pub fn packages() -> std::result::Result<Vec<ferrum_meta::Package>, ferrum_meta:
 
 /// Registers this app's document hooks, and the portal's pages.
 pub fn register(hooks: &mut HookRegistry) {
-    hooks.register("Lease", Arc::new(leases::LeaseHook)).register("RepairRequest", Arc::new(requests::RequestHook));
+    hooks
+        .register("Lease", Arc::new(leases::LeaseHook))
+        .register("RepairRequest", Arc::new(requests::RequestHook))
+        .register("ServiceChargeBudget", Arc::new(service::BudgetHook));
     hooks.add_site("property", Arc::new(site::PropertySite));
 }
 
