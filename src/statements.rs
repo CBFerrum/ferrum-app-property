@@ -87,9 +87,17 @@ impl DocHook for StatementHook {
             .flatten();
         let percent = percent.unwrap_or_default();
         // Lines added by hand stay; the repairs' are worked out again.
-        let mut lines: Vec<Value> = rows(doc, "expenses").into_iter().filter(|l| id(l, "repair").is_none()).map(Value::Object).collect();
+        let mut lines: Vec<Value> = rows(doc, "expenses")
+            .into_iter()
+            .filter(|l| id(l, "repair").is_none())
+            .map(|mut l| {
+                // A row added by hand keeps its id, or is given one.
+                l.entry("id").or_insert_with(|| json!(Uuid::now_v7().to_string()));
+                Value::Object(l)
+            })
+            .collect();
         for (repair, words, cost) in repairs(hc.tx, tenant, building, (from, to), id(doc, "id")).await? {
-            lines.push(json!({"description": words, "amount": money(cost), "repair": repair.to_string()}));
+            lines.push(json!({"id": Uuid::now_v7().to_string(), "description": words, "amount": money(cost), "repair": repair.to_string()}));
         }
         let spent: Decimal = lines.iter().filter_map(Value::as_object).map(|l| d(l, "amount")).sum();
         let (fee, left) = payout(got, percent, spent);
