@@ -776,4 +776,20 @@ async fn scenario() {
     t.k.run_action(&manager, "ServiceChargeBudget", pier_budget, "reconcile", json!({"actual": "1000"})).await.expect("reconciled");
     let row = t.get("ServiceChargeBudget", pier_budget).await["balances"][0].clone();
     assert_eq!((dec(&row["charged"]), dec(&row["due"]), dec(&row["difference"])), (333.34, 333.33, -0.01), "what its invoices bore");
+    // A quarter across the year's end bears each year's days at that year's rate: 10 a day in 2025,
+    // 20 in 2026.
+    let lofts = uid(&t.insert(&manager, "Building", json!({"building_name": "Harbour Lofts"})).await["id"]);
+    let l1 = uid(&t.insert(&manager, "Unit", json!({"unit_number": "L1", "building": lofts.to_string(), "unit_type": "Office", "area": "100"})).await["id"]);
+    for (from, to, amount) in [("2025-01-01", "2025-12-31", "3650"), ("2026-01-01", "2026-12-31", "7300")] {
+        let year = json!({"building": lofts.to_string(), "year_from": from, "year_to": to, "heads": [{"head": "Cleaning", "amount": amount}]});
+        let b = uid(&t.insert(&manager, "ServiceChargeBudget", year).await["id"]);
+        t.k.run_action(&manager, "ServiceChargeBudget", b, "activate_budget", Value::Null).await.expect("in use");
+    }
+    let mut terms = lease(l1, bo, "2025-11-01", "2026-10-31", "3000", "Quarterly", json!([]));
+    terms["pays_service_charge"] = json!(true);
+    let lq = uid(&t.insert(&manager, "Lease", terms).await["id"]);
+    t.k.run_action(&manager, "Lease", lq, "activate", Value::Null).await.unwrap();
+    ferrum_app_property::maintenance_on(&k, day("2026-01-05")).await.expect("upkeep");
+    let quarter = dec(&t.find_one("RentInvoice", json!({"lease": lq.to_string(), "period_from": "2025-11-01"})).await["amount"]);
+    assert_eq!(quarter, 3000.0 + 610.0 + 620.0, "61 days of 2025 at 10 a day, 31 of 2026 at 20");
 }
