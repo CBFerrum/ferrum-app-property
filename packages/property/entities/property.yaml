@@ -2,12 +2,20 @@
   label: Property Settings
   kind: settings
   module: property
-  description: "Where rent is invoiced from."
+  description: "Where rent is invoiced from, what a late payment costs, and where deposits are held."
   fields:
     - {name: company, type: link, to: Company, required: true}
     - {name: rent_item, type: link, to: Item, required: true, description: "What rent is invoiced as"}
+    - {name: late_fee_item, type: link, to: Item, description: "What a late fee is invoiced as; without one, there are no late fees"}
+    - {name: late_fee_after_days, type: int, default: 7, min: 0, label: Late After (Days), description: "Days past an issued rent invoice's due day before a fee is charged"}
+    - {name: late_fee_amount, type: currency, min: "0", description: "A fixed fee"}
+    - {name: late_fee_percent, type: percent, min: "0", max: "100", description: "And a share of what is still owed"}
+    - {name: deposit_account, type: link, to: Account, link_filters: {is_group: false, root_type: Liability}, description: "Where deposits are held; without one, a deposit is only recorded on the lease"}
+    - {name: deposit_deductions_account, type: link, to: Account, link_filters: {is_group: false, root_type: Income}, label: Deposit Deductions Account, description: "Where what is kept of a deposit goes"}
   form:
     - {label: Books, fields: [company, rent_item]}
+    - {label: Late Payment, fields: [late_fee_item, late_fee_after_days, late_fee_amount, late_fee_percent]}
+    - {label: Deposits, fields: [deposit_account, deposit_deductions_account]}
 
 - name: Building
   label: Property
@@ -41,7 +49,7 @@
   kind: master
   module: property
   title_field: unit
-  description: A unit let to a tenant for a term. Active, it is invoiced each period through ERP; a unit has one active lease at a time.
+  description: A unit let to a tenant for a term. Active, it is invoiced each period through ERP, a period cut short for its days, at the rent in effect when it starts; a unit has one active lease at a time. Notice given ends it once the notice runs out.
   fields:
     - {name: unit, type: link, to: Unit, required: true, in_list: true, in_filter: true}
     - {name: lessee, type: link, to: Customer, required: true, in_list: true, in_filter: true, label: Tenant}
@@ -49,17 +57,36 @@
     - {name: ends_on, type: date, required: true, in_list: true}
     - {name: rent, type: currency, required: true, in_list: true, description: "A period's rent"}
     - {name: frequency, type: select, options: [Monthly, Quarterly, Yearly], default: Monthly, required: true, in_list: true}
-    - {name: deposit, type: currency}
+    - {name: deposit, type: currency, min: "0", description: "Held through the books when the settings name a deposit account: owed by the lessee when the lease starts"}
+    - {name: notice_days, type: int, default: 0, min: 0, label: Notice (Days), description: "Days of notice either side gives to end it before its end"}
     - {name: charges, type: table, of: LeaseCharge, label: Other Charges, description: "Invoiced with the rent each period"}
+    - {name: rent_reviews, type: table, of: LeaseRentReview, label: Rent Reviews, description: "The rent from a day on, for the periods that start on or after it"}
     - {name: status, type: select, options: [Draft, Active, Ended, Terminated], default: Draft, read_only: true, no_copy: true, in_list: true, in_filter: true}
     - {name: next_invoice_on, type: date, read_only: true, no_copy: true, description: "The first day of the next period to invoice"}
+    - {name: notice_given_on, type: date, read_only: true, no_copy: true}
+    - {name: notice_by, type: select, options: [Lessee, Landlord], read_only: true, no_copy: true}
+    - {name: leaving_on, type: date, label: Ends On Notice, read_only: true, no_copy: true, in_list: true, description: "Its last day, once the notice given runs out"}
     - {name: terminated_on, type: date, read_only: true, no_copy: true}
+    - {name: deposit_entry, type: link, to: JournalEntry, read_only: true, no_copy: true, description: "The deposit owed and held"}
+    - {name: deposit_return_entry, type: link, to: JournalEntry, read_only: true, no_copy: true, description: "The deposit given back, less what was kept"}
+    - {name: deposit_kept, type: currency, read_only: true, no_copy: true}
     - {name: notes, type: text}
   actions:
     - {name: activate, label: Activate It, permission: write, condition: "doc.status == 'Draft'"}
-    - {name: terminate, label: End It Early, permission: write, condition: "doc.status == 'Active'", params: [{name: date, type: date, label: Last Day, required: true, description: "From the lease's start to today"}]}
+    - {name: terminate, label: End It Early, permission: write, condition: "doc.status == 'Active'", params: [{name: date, type: date, label: Last Day, required: true, description: "From the lease's start to today, as both sides agree"}]}
+    - {name: give_notice, label: Give Notice, permission: write, condition: "doc.status == 'Active'", params: [{name: date, type: date, label: Given On, required: true, description: "From the lease's start to today"}, {name: by, type: select, options: [Lessee, Landlord], required: true, label: Given By}]}
+    - {name: review_rent, label: Review the Rent, permission: write, condition: "doc.status == 'Active'", params: [{name: date, type: date, label: From, required: true, description: "No sooner than the next period to invoice"}, {name: rent, type: currency, required: true, label: New Rent}, {name: note, type: data}]}
+    - {name: return_deposit, label: Return the Deposit, permission: write, condition: "doc.status == 'Ended' || doc.status == 'Terminated'", params: [{name: kept, type: currency, label: Kept, description: "For damage or rent owed; nothing when empty"}, {name: why, type: text, label: Why It Was Kept}]}
   numbering: {template: "LSE-{YYYY}-{seq:5}"}
   list: {columns: [number, unit, lessee, starts_on, ends_on, rent, status], sort: starts_on desc}
+
+- name: LeaseRentReview
+  label: Rent Review
+  kind: child
+  fields:
+    - {name: effective_from, type: date, required: true, in_list: true, label: From}
+    - {name: rent, type: currency, required: true, in_list: true}
+    - {name: note, type: data, in_list: true}
 
 - name: LeaseCharge
   label: Charge
@@ -82,6 +109,7 @@
     - {name: period_to, type: date, required: true, read_only: true, in_list: true}
     - {name: amount, type: currency, read_only: true, in_list: true}
     - {name: sales_invoice, type: link, to: SalesInvoice, read_only: true}
+    - {name: late_fee_invoice, type: link, to: SalesInvoice, read_only: true, no_copy: true, description: "The fee charged when it was paid late"}
   list: {columns: [lease, period_from, period_to, amount], sort: period_from desc}
 
 - name: Inspection

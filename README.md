@@ -19,13 +19,29 @@ Property and facilities for [Ferrum](https://github.com/CBFerrum/Ferrum):
   same days is refused, naming the lease that holds them. An ended or terminated lease keeps the
   days it ran.
 - **Terms are kept.** A draft may change. Once active, a lease's unit, lessee, dates, rent,
-  frequency and charges stay as agreed: end it and make another.
+  frequency, charges, rent reviews, deposit and notice stay as agreed: end it and make another.
+  The rent may still be reviewed, for periods not yet invoiced.
 - **Rent invoiced each period, once.** Upkeep invoices each period of an active lease, monthly,
   quarterly or yearly, from its start up to today. Each invoice is a Sales Invoice in ERP to the
   lessee, with the rent and each charge (parking, service) on its own line. A period is invoiced
   once however often upkeep runs, and the last period is cut at the lease's end.
-- **Ending.** A lease runs to its last day, then upkeep ends it and frees the unit. Ended early, on a
-  day from its start to today, it frees the unit at once and is invoiced up to that day.
+- **Part periods.** A period cut short (at the lease's end, ended early, or on notice) owes its
+  days' share of the rent and charges, "45 of 91 days" on the invoice.
+- **Rent reviews.** A lease lists the rent from given days on: set in its draft, or reviewed while
+  it runs, from the next period to invoice on. Each period is invoiced at the rent in effect on
+  its first day.
+- **Ending.** A lease runs to its last day, then upkeep ends it and frees the unit. Ended early by
+  agreement, on a day from its start to today, it frees the unit at once and is invoiced up to
+  that day.
+- **Notice.** Either side gives notice, as the lease's notice days say. The lease then ends when
+  the notice runs out: it is invoiced to that day, upkeep ends it, and the days after are free for
+  another lease. Notice that would run past the lease's end is refused, since it runs to its end anyway.
+- **Late fees.** With a late-fee item in the settings, an issued rent invoice still owed past its
+  due day and the days allowed is charged a late fee once: a fixed fee and a share of what is
+  owed, invoiced to the lessee.
+- **Deposits through the books.** With a deposit account in the settings, activating a lease with
+  a deposit makes a journal entry: the lessee owes it, and it is held. Once the lease is over, the
+  deposit is given back. Anything kept goes to the deductions account, and the reason is recorded.
 - **Maintenance.** An urgent request takes its unit out of service until every urgent request on it
   is done. The unit then goes back to let or vacant, as its leases say. A request keeps the day it
   was done.
@@ -45,17 +61,17 @@ cd ui && npm run build && npm run check
 `tests/property_it.rs` walks a year at a block of flats:
 - leases, their terms and the unit's days;
 - rent and parking invoiced each month, once;
-- a quarterly lease cut at its end, and a lease ended early;
+- a quarterly lease cut at its end, paying for its days, and a lease ended early;
+- rent reviewed, notice that ends a lease with its last day's share, a late fee charged once, and
+  a deposit held and given back less what was kept;
 - urgent requests holding a unit;
 - who may do what;
 - the portal: only her leases, repairs only where she rents now.
 
 ## Not yet
 
-- Rent for part of a period: the last, shorter period is charged in full. Rent reviews and
-  escalations.
-- Deposits held and returned through the books (the amount is recorded), and late fees.
-- Ending a lease on a future day, with notice periods.
+- A period already invoiced is not credited back when a lease ends early within it.
+- Escalation by index (rent reviews are amounts from given days).
 - Service-charge budgets shared across a building, and owners' statements for managed property.
 - An owners' portal, and paying rent on the portal (ERP's invoices page shows what is due).
 
@@ -63,6 +79,7 @@ cd ui && npm run build && npm run check
 
 | Version | Highlights |
 |---|---|
+| **0.2.0** | Part periods paid for their days, rent reviews, notice, late fees, and deposits held and given back through the books. |
 | **0.1.5** | Rebuilt with Ferrum-Frontend 00dea07: a workflow state's kept fields are read-only, its needed ones required. |
 | **0.1.4** | Personal-data requests find the repairs a person reported. |
 | **0.1.3** | Rebuilt with Ferrum-Frontend daeadda: actions say what they did. |
