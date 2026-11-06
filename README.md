@@ -73,6 +73,13 @@ Property and facilities for [Ferrum](https://github.com/CBFerrum/Ferrum):
   still owed, by the month their period starts, from issued invoices only; and its repairs, open or
   done in the last 90 days. Nobody else's buildings, and nothing of a building without their
   address.
+- **Owners' statements.** For a building and some days: what was collected on its rent invoices for
+  periods starting then (late fees in, credit notes out), less the management fee (the building's
+  percentage) and the expenses charged to the owner (repairs done then, at their cost, once each,
+  and lines added by hand). Billing the payout makes the owner's purchase invoice to the company,
+  from the owner as ERP's supplier, for accounts to pay as ERP pays bills. The owner sees billed
+  statements on the portal, and what is still to pay on them. An owner signs in to the portal once
+  an administrator has made them a portal person (Administration, Users).
 - **The workspace's day.** Upkeep, the last day of notice or an early end, and the day a repair was
   done all go by the workspace's own day, not UTC's.
 
@@ -94,19 +101,25 @@ cd ui && npm run build && npm run check
 - urgent requests holding a unit;
 - who may do what;
 - the portal: only her leases, repairs only where she rents now; an owner sees only her building,
-  with the rent issued and what is still owed after a payment.
+  with the rent issued and what is still owed after a payment;
+- an owner's statement: a payment, a fee of 10%, a repair's cost and a line by hand making the
+  share; overlapping days refused; billing refused without the owner in the books or the payout
+  item, then billed and kept; the statement on the owner's portal, and what is still to pay once
+  the bill is issued.
 
 ## Not yet
 
-- Owners' statements with management fees, expenses and payouts. Service charges are shared by floor
-  area only (no weightings or schedules), the landlord bears vacant units' shares, and a period
-  crossing two budget years is charged at the rate of the year it starts in.
+- Service charges are shared by floor area only (no weightings or schedules), the landlord bears
+  vacant units' shares, and a period crossing two budget years is charged at the rate of the year it
+  starts in. A statement's expenses are repairs and lines by hand: ERP's bills are not read for
+  them, and its fee is one percentage of what was collected.
 - Paying rent on the portal (ERP's invoices page shows what is due).
 
 ## Changelog
 
 | Version | Highlights |
 |---|---|
+| **0.7.0** | Owners' statements: rent collected less the management fee and the expenses charged, billed to the company as the owner's share, and seen on the portal. |
 | **0.6.0** | Service charge budgets: shared costs by floor area, invoiced with the rent, reconciled once the year is over. |
 | **0.5.0** | Rent indexed each year: a Rent Index's values, a cap and a floor, kept as rent reviews. |
 | **0.4.1** | Rebuilt with Ferrum-Frontend 24c3951: times on the workspace's clock; drafts headed as drafts. |

@@ -13,6 +13,7 @@
     - {name: deposit_account, type: link, to: Account, link_filters: {is_group: false, root_type: Liability}, description: "Where deposits are held; without one, a deposit is only recorded on the lease"}
     - {name: deposit_deductions_account, type: link, to: Account, link_filters: {is_group: false, root_type: Income}, label: Deposit Deductions Account, description: "Where what is kept of a deposit goes"}
     - {name: service_charge_item, type: link, to: Item, description: "What service charges are invoiced as; without one, none are"}
+    - {name: owner_payout_item, type: link, to: Item, label: Owner Payout Item, description: "What an owner's statement is billed as, by the owner to the company, for their share"}
   form:
     - {label: Books, fields: [company, rent_item]}
     - {label: Late Payment, fields: [late_fee_item, late_fee_after_days, late_fee_amount, late_fee_percent]}
@@ -29,7 +30,9 @@
     - {name: building_name, type: data, required: true, in_list: true}
     - {name: address, type: text}
     - {name: manager_email, type: email, label: Manager}
-    - {name: owner_email, type: email, label: Owner, in_filter: true, description: "Who owns it: signed in to the portal with this address, they see its units, leases, rent invoiced and still owed, and repairs under Properties You Own"}
+    - {name: owner_email, type: email, label: Owner, in_filter: true, description: "Who owns it: once they are a portal person with this address (Administration, Users), signed in to the portal they see its units, leases, rent invoiced and still owed, repairs and statements under Properties You Own"}
+    - {name: owner_supplier, type: link, to: Supplier, label: Owner In The Books, description: "The owner as ERP's supplier: their statements' payouts are billed by them"}
+    - {name: management_fee_percent, type: percent, default: 0, min: "0", max: "100", label: Management Fee %, description: "The share of the rent collected the company keeps for managing it"}
   list: {columns: [building_name, owner_email, manager_email], sort: building_name asc}
 
 - name: Unit
@@ -222,5 +225,38 @@
     - {name: assigned_to, type: data}
     - {name: reported_by, type: email, read_only: true, no_copy: true, in_filter: true, description: "The lessee who asked for it on the portal"}
     - {name: done_on, type: date, read_only: true, no_copy: true}
+    - {name: cost, type: currency, min: "0", description: "What it cost: charged to the building's owner on their statement for the days it was done in"}
   numbering: {template: "MR-{YYYY}-{seq:5}"}
   list: {columns: [number, unit, summary, priority, status], sort: created_at desc}
+
+- name: OwnerStatementExpense
+  label: Expense
+  kind: child
+  fields:
+    - {name: description, type: data, required: true, in_list: true}
+    - {name: amount, type: currency, required: true, in_list: true}
+    - {name: repair, type: link, to: RepairRequest, read_only: true, in_list: true, description: "The repair it was charged for"}
+
+- name: OwnerStatement
+  label: Owner Statement
+  label_plural: Owner Statements
+  kind: master
+  module: property
+  title_field: building
+  description: What a building's owner is owed for some days. The rent, charges and fees collected on its rent invoices for periods starting then, less the management fee and the expenses charged to them (repairs done then, with their cost, and any added by hand). Billed, the payout is the owner's purchase invoice to the company, paid as ERP pays bills.
+  fields:
+    - {name: building, type: link, to: Building, required: true, in_list: true, in_filter: true}
+    - {name: period_from, type: date, required: true, in_list: true}
+    - {name: period_to, type: date, required: true, in_list: true}
+    - {name: collected, type: currency, read_only: true, no_copy: true, in_list: true, description: "Paid on the rent invoices (and their late fees and credit notes) for periods starting in these days, by today"}
+    - {name: fee_percent, type: percent, read_only: true, no_copy: true, label: Management Fee %}
+    - {name: management_fee, type: currency, read_only: true, no_copy: true}
+    - {name: expenses, type: table, of: OwnerStatementExpense, description: "Repairs done in these days with a cost come by themselves; add others by hand"}
+    - {name: expenses_total, type: currency, read_only: true, no_copy: true, label: Expenses}
+    - {name: payout, type: currency, read_only: true, no_copy: true, in_list: true, description: "Collected, less the fee and the expenses"}
+    - {name: status, type: select, options: [Draft, Billed], default: Draft, read_only: true, no_copy: true, in_list: true, in_filter: true}
+    - {name: purchase_invoice, type: link, to: PurchaseInvoice, read_only: true, no_copy: true, label: Billed By}
+  actions:
+    - {name: bill_owner, label: Bill The Payout, permission: write, condition: "doc.status == 'Draft'", confirm: "The owner's share is billed to the company as a purchase invoice, and this statement is kept as it is."}
+  numbering: {template: "OS-{YYYY}-{seq:5}"}
+  list: {columns: [number, building, period_from, period_to, collected, payout, status], sort: period_from desc}

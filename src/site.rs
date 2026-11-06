@@ -1,6 +1,7 @@
 //! Property's pages of the workspace's portal (Ferrum docs/plan/apps-ui.md §9.1), from
 //! `/api/app/property/portal/…`. "Your home" at `/portal/home/`: a lessee's leases with the rent
-//! invoiced, and the repairs they asked for. "Properties you own" at `/portal/owner/`: the buildings
+//! invoiced, and the repairs they asked for. "Properties you own" at `/portal/owner/` (statements
+//! included, once billed): the buildings
 //! naming the caller's address as their owner's. Portal people hold no roles: their leases are those
 //! of the customers their address belongs to, and a request they raise runs as the system after
 //! these checks.
@@ -128,6 +129,8 @@ async fn home(k: &Kernel, user: &Ctx) -> Result<Value> {
 /// Months of rent an owner sees for each building, and repairs.
 const MONTHS: usize = 12;
 const REPAIRS: usize = 50;
+/// Billed statements an owner sees for each building, the latest first.
+const STATEMENTS: usize = 12;
 
 /// `GET portal/owner`: the buildings naming the caller as their owner, each with its units and the
 /// lease letting each now; the rent, charges and late fees invoiced, less what was given back, and
@@ -183,6 +186,19 @@ async fn owner(k: &Kernel, user: &Ctx) -> Result<Value> {
     .bind(user.today() - chrono::Duration::days(90))
     .fetch_all(&mut *tx)
     .await?;
+    // Statements once billed, and what is still to pay on each bill once accounts issued it.
+    let statements: Vec<(Uuid, Value)> = sqlx::query_as(
+        "select s.building, jsonb_build_object('number', s.number, 'period_from', s.period_from, 'period_to', s.period_to, \
+           'collected', trim_scale(s.collected)::text, 'fee_percent', trim_scale(s.fee_percent)::text, 'management_fee', trim_scale(s.management_fee)::text, \
+           'expenses', trim_scale(s.expenses_total)::text, 'payout', trim_scale(s.payout)::text, \
+           'still_to_pay', case when pi.docstatus = 1 then trim_scale(pi.outstanding_amount)::text end) \
+         from e_owner_statement s left join e_purchase_invoice pi on pi.tenant_id = s.tenant_id and pi.id = s.purchase_invoice \
+         where s.tenant_id = $1 and s.building = any($2) and s.status = 'Billed' order by s.period_from desc, s.number desc",
+    )
+    .bind(tenant)
+    .bind(&ids)
+    .fetch_all(&mut *tx)
+    .await?;
     tx.commit().await?;
     let properties: Vec<Value> = buildings
         .iter()
@@ -193,7 +209,8 @@ async fn owner(k: &Kernel, user: &Ctx) -> Result<Value> {
                 .take(MONTHS)
                 .map(|(_, month, invoiced, owed)| json!({"month": month, "invoiced": invoiced, "owed": owed}))
                 .collect();
-            json!({"id": b, "name": name, "address": address, "units": of(&units, *b, usize::MAX), "rent": rent, "repairs": of(&repairs, *b, REPAIRS)})
+            json!({"id": b, "name": name, "address": address, "units": of(&units, *b, usize::MAX), "rent": rent, "repairs": of(&repairs, *b, REPAIRS),
+                   "statements": of(&statements, *b, STATEMENTS)})
         })
         .collect();
     Ok(json!({"properties": properties}))
