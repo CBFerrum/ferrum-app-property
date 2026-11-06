@@ -227,7 +227,11 @@ impl DocHook for LeaseHook {
                 if date(doc, "next_invoice_on").is_some_and(|next| on < next) || last_day(doc).is_some_and(|l| on > l) {
                     return Err(Error::field("date", "falls on or after the next period to invoice, within the lease"));
                 }
-                let mut reviews = rows(doc, "rent_reviews");
+                // The reviews made, as rows of their own fields (their ids kept, nothing the table adds).
+                let mut reviews: Vec<Doc> = rows(doc, "rent_reviews")
+                    .into_iter()
+                    .map(|r| r.into_iter().filter(|(k, _)| matches!(k.as_str(), "id" | "effective_from" | "rent" | "note")).collect())
+                    .collect();
                 if reviews.iter().any(|r| date(r, "effective_from").is_some_and(|f| f >= on)) {
                     return Err(Error::field("date", "is after the reviews already made"));
                 }
