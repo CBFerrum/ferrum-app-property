@@ -79,6 +79,7 @@ cd ui && npm run build && npm run check
 
 | Version | Highlights |
 |---|---|
+| **0.2.1** | Rebuilt with Ferrum-Frontend bb60115: empty numbers read as the server reads them; settings open as their record. |
 | **0.2.0** | Part periods paid for their days, rent reviews, notice, late fees, and deposits held and given back through the books. |
 | **0.1.5** | Rebuilt with Ferrum-Frontend 00dea07: a workflow state's kept fields are read-only, its needed ones required. |
 | **0.1.4** | Personal-data requests find the repairs a person reported. |
