@@ -97,6 +97,7 @@ cd ui && npm run build && npm run check
 
 | Version | Highlights |
 |---|---|
+| **0.4.1** | Rebuilt with Ferrum-Frontend 24c3951: times on the workspace's clock; drafts headed as drafts. |
 | **0.4.0** | A lease ended early or on notice gives back what was invoiced for the days after its last day: a credit note against an issued invoice, a draft made again. |
 | **0.3.0** | Owners on the portal: their buildings' units, leases, rent invoiced and still owed, and repairs; dates by the workspace's day. |
 | **0.2.1** | Rebuilt with Ferrum-Frontend bb60115: empty numbers read as the server reads them; settings open as their record. |
