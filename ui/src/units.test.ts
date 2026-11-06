@@ -20,10 +20,11 @@ describe("the units page", () => {
         { id: "a", status: "Active", ends_on: "2026-11-30" },
         { id: "ended", status: "Ended", ends_on: "2026-11-15" },
         { id: "past", status: "Active", ends_on: "2026-10-01" },
+        { id: "noticed", status: "Active", ends_on: "2027-07-31", leaving_on: "2026-12-01", notice_by: "Lessee" },
       ],
       "2026-11-04",
     );
-    expect(l.map((x) => x.id)).toEqual(["a", "b"]);
+    expect(l.map((x) => x.id)).toEqual(["a", "noticed", "b"]);
   });
 });
 

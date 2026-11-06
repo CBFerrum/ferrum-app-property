@@ -1,8 +1,8 @@
 id: property
 name: Property
-version: 0.1.5
+version: 0.2.0
 publisher: cbferrum
-summary: "Buildings and units, leases with rent and charges invoiced each period through ERP, inspections and maintenance requests"
+summary: "Buildings and units, leases with rent and charges invoiced each period through ERP, rent reviews, notice, late fees and deposits through the books, inspections and maintenance requests"
 description: README.md
 categories: [industry, finance]
 license: AGPL-3.0-only
