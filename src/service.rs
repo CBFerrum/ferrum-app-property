@@ -1,6 +1,7 @@
 //! Service charges. A building's budget for a year (its costs' total) is shared among its units by
 //! floor area. A lease that pays service charge is invoiced its unit's share with its rent, each
-//! period's line the period's days of the year at the rate of the budget in use on its first day.
+//! period's line its days in each budget year at that year's rate: the budget in use on its first
+//! day, then the next year's for its days past that year when one is in use (else the first's).
 //! Once the year is over, the budget is reconciled with what was spent: each such lease's share of
 //! what was spent, for its days within the year, against what its invoices bore for those days (each
 //! period's line was rounded on its own), is invoiced to its lessee, or credited against its latest
@@ -20,24 +21,43 @@ use uuid::Uuid;
 const LONGEST_YEAR: i64 = 400;
 
 /// What a lease's period bears for service: the item it is invoiced as, the unit's share of the
-/// year's budget, and the year's days.
+/// year's budget, the year's days and last day, and the next year's share and days when the period
+/// runs into a year with a budget in use.
 pub(crate) struct Service {
     pub item: Uuid,
     pub annual: Decimal,
     pub year_days: i64,
+    pub year_to: NaiveDate,
+    pub next: Option<(Decimal, i64)>,
 }
 
 impl Service {
-    /// A period of `days` days' charge.
-    pub(crate) fn for_days(&self, days: i64) -> Decimal {
-        round(self.annual * Decimal::from(days) / Decimal::from(self.year_days.max(1)), 2)
+    /// The charge from `from` to `to`: its days in this budget's year at its rate, the days after at
+    /// the next year's when it has a budget in use, else at this one's.
+    pub(crate) fn for_span(&self, from: NaiveDate, to: NaiveDate) -> Decimal {
+        let end = to.min(self.year_to);
+        let first = Decimal::from(((end - from).num_days() + 1).max(0));
+        let rest = Decimal::from((to - end).num_days().max(0));
+        let (annual, days) = self.next.unwrap_or((self.annual, self.year_days));
+        round(self.annual * first / Decimal::from(self.year_days.max(1)) + annual * rest / Decimal::from(days.max(1)), 2)
     }
 }
 
-/// The service charge of a lease's period starting `on`, when the lease pays one and its building
-/// has a budget in use on that day.
-pub(crate) async fn service_for(tx: &mut Tx, tenant: Uuid, lease: &Doc, on: NaiveDate) -> Result<Option<Service>> {
+/// The service charge of a lease's period from `from` to `until`, when the lease pays one and its
+/// building has a budget in use on its first day.
+pub(crate) async fn service_for(tx: &mut Tx, tenant: Uuid, lease: &Doc, from: NaiveDate, until: NaiveDate) -> Result<Option<Service>> {
     let Some(unit) = id(lease, "unit").filter(|_| b(lease, "pays_service_charge")) else { return Ok(None) };
+    let Some((item, annual, year_from, year_to)) = share_on(tx, tenant, unit, from).await? else { return Ok(None) };
+    let next = match year_to.succ_opt().filter(|_| until > year_to) {
+        Some(on) => share_on(tx, tenant, unit, on).await?.map(|(_, a, f, t)| (a, (t - f).num_days() + 1)),
+        None => None,
+    };
+    Ok(Some(Service { item, annual, year_days: (year_to - year_from).num_days() + 1, year_to, next }))
+}
+
+/// A unit's share of the budget in use on `on`, with the item it is invoiced as and the budget's
+/// year: (item, share, first day, last day).
+async fn share_on(tx: &mut Tx, tenant: Uuid, unit: Uuid, on: NaiveDate) -> Result<Option<(Uuid, Decimal, NaiveDate, NaiveDate)>> {
     let row: Option<(Option<Uuid>, Option<Decimal>, NaiveDate, NaiveDate, Option<Decimal>, Option<Decimal>)> = sqlx::query_as(
         "select (select service_charge_item from e_property_settings where tenant_id = $1 limit 1), g.budget, g.year_from, g.year_to, u.area, \
            (select sum(o.area) from e_unit o where o.tenant_id = g.tenant_id and o.building = g.building) \
@@ -53,7 +73,7 @@ pub(crate) async fn service_for(tx: &mut Tx, tenant: Uuid, lease: &Doc, on: Naiv
     if total <= Decimal::ZERO {
         return Ok(None);
     }
-    Ok(Some(Service { item, annual: budget * area / total, year_days: (to - from).num_days() + 1 }))
+    Ok(Some((item, budget * area / total, from, to)))
 }
 
 /// A lease's balance for a year of `year_days` days it held `days` of: (due, difference), its unit's
@@ -282,7 +302,18 @@ mod tests {
         assert_eq!(balance(n("6570"), n("12045"), n("0.6"), 365, 365).1, n("657"));
         // Twelve months each rounded bore a cent more than a third of 1000: a cent back.
         assert_eq!(balance(n("333.34"), n("1000"), n("1") / n("3"), 365, 365), (n("333.33"), n("-0.01")));
-        let sv = Service { item: Uuid::nil(), annual: n("6570"), year_days: 365 };
-        assert_eq!((sv.for_days(31), sv.for_days(28), sv.for_days(365)), (n("558"), n("504"), n("6570")), "18 a day");
+        let day = |v: &str| NaiveDate::parse_from_str(v, "%Y-%m-%d").unwrap();
+        let sv = Service { item: Uuid::nil(), annual: n("6570"), year_days: 365, year_to: day("2025-12-31"), next: None };
+        let span = |s: &Service, from: &str, to: &str| s.for_span(day(from), day(to));
+        assert_eq!(
+            (span(&sv, "2025-01-01", "2025-01-31"), span(&sv, "2025-02-01", "2025-02-28"), span(&sv, "2025-01-01", "2025-12-31")),
+            (n("558"), n("504"), n("6570")),
+            "18 a day"
+        );
+        // Across the year's end: December at 18 a day, then January at the next year's 20 a day, or
+        // at 18 when the next year has no budget in use.
+        let both = Service { next: Some((n("7300"), 365)), ..sv };
+        assert_eq!(span(&both, "2025-12-01", "2026-01-31"), n("1178"));
+        assert_eq!(span(&Service { next: None, ..both }, "2025-12-01", "2026-01-31"), n("1116"));
     }
 }

@@ -77,7 +77,7 @@ pub(crate) fn period_lines(
     );
     // Its unit's share of the building's service charge, for the period's days of the year.
     if let Some(sv) = service {
-        out.push((Some(sv.item.to_string()), sv.for_days(days), what("Service charge")));
+        out.push((Some(sv.item.to_string()), sv.for_span(from, to), what("Service charge")));
     }
     out
 }
@@ -116,7 +116,7 @@ async fn credit_after(k: &Kernel, ctx: &Ctx, tx: &mut Tx, lease: &Doc, last: Nai
         let si = k.get_tx(ctx, tx, "SalesInvoice", invoice, true).await?;
         // The days it keeps: up to the last day, none when the period starts after it.
         let to = last.max(from - Duration::days(1));
-        let service = crate::service::service_for(tx, ctx.tenant, lease, from).await?;
+        let service = crate::service::service_for(tx, ctx.tenant, lease, from, billed_to).await?;
         let kept = period_lines(lease, rent_item, from, to, service.as_ref());
         match si.get("docstatus").and_then(Value::as_i64) {
             Some(1) => {
@@ -529,7 +529,7 @@ pub(crate) async fn upkeep(k: &Kernel, tenant: Uuid, schema: Arc<Schema>, today:
                     k.set_child_rows_tx(&ctx, &mut tx, "Lease", "rent_reviews", lease, reviews.clone()).await?;
                     doc.insert("rent_reviews".into(), json!(reviews));
                 }
-                let service = crate::service::service_for(&mut tx, tenant, &doc, from).await?;
+                let service = crate::service::service_for(&mut tx, tenant, &doc, from, to).await?;
                 let lines = period_lines(&doc, rent_item, from, to, service.as_ref());
                 let amount: Decimal = lines.iter().map(|l| l.1).sum();
                 let items = invoice_lines(&lines, "1");

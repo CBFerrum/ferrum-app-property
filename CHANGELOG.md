@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.5
+
+A period across two budget years bears each year's days at that year's service charge rate: the
+budget in use on its first day for its days in that year, the next year's for the days after once
+its budget is in use (else the first year's, as before). A quarter from November to January under
+budgets of 10 and 20 a day is charged 61 × 10 + 31 × 20, not 92 × 10. Reconciliation already took
+each year's days by themselves.
+
 ## 0.7.4
 
 Rebuilt with Ferrum-Frontend a64416a: a new record's box whose default is 1 shows ticked, as it is saved. An action's dialog says every refusal, the errors on what the action made (another record's rows) among them, and an action with parameters and a confirmation asks once.
