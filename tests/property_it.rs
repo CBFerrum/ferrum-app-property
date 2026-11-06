@@ -234,7 +234,13 @@ async fn scenario() {
     let quarterly = uid(&t.insert(&manager, "Lease", lease(u102, bo, "2026-01-01", "2026-05-15", "90000", "Quarterly", json!([]))).await["id"]);
     t.k.run_action(&manager, "Lease", quarterly, "activate", Value::Null).await.unwrap();
     ferrum_app_property::maintenance_on(&k, day("2026-06-01")).await.expect("upkeep");
-    assert_eq!(t.periods(quarterly).await, want(&[("2026-01-01", "2026-03-31"), ("2026-04-01", "2026-05-15")], 90000.0));
+    // Its last quarter, cut at its end, owes its 45 days of 91.
+    let mut cut = want(&[("2026-01-01", "2026-03-31")], 90000.0);
+    cut.extend(want(&[("2026-04-01", "2026-05-15")], 44505.49));
+    assert_eq!(t.periods(quarterly).await, cut);
+    let last_quarter = t.find_one("RentInvoice", json!({"lease": quarterly.to_string(), "period_from": "2026-04-01"})).await;
+    let inv = t.get("SalesInvoice", uid(&last_quarter["sales_invoice"])).await;
+    assert!(inv["items"][0]["description"].as_str().unwrap().ends_with("(45 of 91 days)"), "{}", inv["items"][0]);
     assert_eq!(t.get("Lease", quarterly).await["status"], "Ended");
 
     // ───────────── a lease ended early, invoiced to its last day ─────────────
@@ -371,4 +377,114 @@ async fn scenario() {
         "invalid",
         "not a unit you rent now",
     );
+
+    // ───────────── rent reviews, notice, late fees and the deposit ─────────────
+    let account = |name: &'static str| {
+        let t = &t;
+        async move { t.find_one("Account", json!({"account_name": name, "company": company.to_string()})).await["id"].clone() }
+    };
+    let held = t
+        .insert(&a, "Account", json!({"account_name": "Security Deposits", "company": company.to_string(), "parent_account": account("Current Liabilities").await, "root_type": "Liability"}))
+        .await["id"]
+        .clone();
+    let other_income = account("Other Income").await;
+    let late_item = uid(&t.insert(&a, "Item", item("LATEFEE")).await["id"]);
+    let settings = uid(&t.find_one("PropertySettings", json!({})).await["id"]);
+    t.k.update(
+        &manager,
+        "PropertySettings",
+        settings,
+        obj(json!({"late_fee_item": late_item.to_string(), "late_fee_after_days": 5, "late_fee_amount": "500", "late_fee_percent": "2",
+                   "deposit_account": held, "deposit_deductions_account": other_income})),
+        None,
+    )
+    .await
+    .expect("late fees and deposits");
+    let u104 = uid(&t.insert(&manager, "Unit", unit("104")).await["id"]);
+    let cy = uid(&t.insert(&a, "Customer", json!({"customer_name": "Cy Doe", "customer_type": "Individual"})).await["id"]);
+    let terms = |reviews: Value| {
+        let mut v = lease(u104, cy, "2026-08-01", "2027-07-31", "20000", "Monthly", json!([]));
+        v.as_object_mut().unwrap().extend(obj(json!({"deposit": "40000", "notice_days": 30, "rent_reviews": reviews})));
+        v
+    };
+    refused(t.k.insert(&manager, "Lease", obj(terms(json!([{"effective_from": "2026-07-01", "rent": "21000"}])))).await, "invalid", "after the lease starts");
+    let fourth = uid(&t.insert(&manager, "Lease", terms(json!([{"effective_from": "2027-02-01", "rent": "21000"}]))).await["id"]);
+    t.k.run_action(&manager, "Lease", fourth, "activate", Value::Null).await.expect("let to Cy");
+    // The deposit is owed by the lessee and held, through the books.
+    let l4 = t.get("Lease", fourth).await;
+    let je = t.get("JournalEntry", uid(&l4["deposit_entry"])).await;
+    let mut lines: Vec<(String, f64, f64, Option<String>)> = je["accounts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| (l["account"].as_str().unwrap().into(), dec(&l["debit"]), dec(&l["credit"]), l["customer"].as_str().map(str::to_string)))
+        .collect();
+    lines.sort_by(|x, y| x.1.total_cmp(&y.1));
+    assert_eq!(lines[0], (held.as_str().unwrap().to_string(), 0.0, 40000.0, None), "held");
+    assert_eq!((lines[1].1, lines[1].3.as_deref()), (40000.0, Some(cy.to_string().as_str())), "owed by Cy");
+    // Reviews while it runs: from the next period to invoice on, after those made.
+    refused(
+        t.k.run_action(&manager, "Lease", fourth, "review_rent", json!({"date": "2026-07-15", "rent": "22000"})).await,
+        "invalid",
+        "next period to invoice",
+    );
+    refused(
+        t.k.run_action(&manager, "Lease", fourth, "review_rent", json!({"date": "2027-01-01", "rent": "22000"})).await,
+        "invalid",
+        "after the reviews already made",
+    );
+    refused(t.k.run_action(&manager, "Lease", fourth, "review_rent", json!({"date": "2027-05-01", "rent": "0"})).await, "invalid", "above zero");
+    t.k.run_action(&manager, "Lease", fourth, "review_rent", json!({"date": "2027-05-01", "rent": "22000", "note": "Market review"})).await.expect("reviewed");
+    assert_eq!(t.get("Lease", fourth).await["rent_reviews"].as_array().unwrap().len(), 2);
+    refused(t.k.update(&manager, "Lease", fourth, obj(json!({"notice_days": 10})), None).await, "invalid", "keeps its terms");
+    ferrum_app_property::maintenance_on(&k, day("2026-10-15")).await.expect("upkeep");
+    assert_eq!(t.periods(fourth).await, want(&[("2026-08-01", "2026-08-31"), ("2026-09-01", "2026-09-30"), ("2026-10-01", "2026-10-31")], 20000.0));
+    // August issued and left unpaid: once past its due day and five more, a fee, once.
+    let august = t.find_one("RentInvoice", json!({"lease": fourth.to_string(), "period_from": "2026-08-01"})).await;
+    let august_invoice = uid(&august["sales_invoice"]);
+    let issued_august = t.k.submit(&a, "SalesInvoice", august_invoice, None).await.expect("issued");
+    let due = day(issued_august["due_date"].as_str().or(issued_august["posting_date"].as_str()).unwrap());
+    ferrum_app_property::maintenance_on(&k, due + chrono::Duration::days(5)).await.expect("upkeep");
+    assert!(t.get("RentInvoice", uid(&august["id"])).await["late_fee_invoice"].is_null(), "not late yet");
+    ferrum_app_property::maintenance_on(&k, due + chrono::Duration::days(6)).await.expect("upkeep");
+    let fee = t.get("RentInvoice", uid(&august["id"])).await["late_fee_invoice"].clone();
+    let fee_invoice = t.get("SalesInvoice", uid(&fee)).await;
+    assert_eq!((fee_invoice["customer"].as_str(), dec(&fee_invoice["grand_total"])), (Some(cy.to_string().as_str()), 900.0), "500 and 2% of 20000");
+    ferrum_app_property::maintenance_on(&k, due + chrono::Duration::days(9)).await.expect("upkeep");
+    assert_eq!(t.get("RentInvoice", uid(&august["id"])).await["late_fee_invoice"], fee, "once");
+    // Notice from the lessee: the lease ends when it runs out, its last period cut there.
+    refused(
+        t.k.run_action(&manager, "Lease", fourth, "give_notice", json!({"date": "2026-07-01", "by": "Lessee"})).await,
+        "invalid",
+        "from the lease's start to today",
+    );
+    refused(t.k.run_action(&manager, "Lease", fourth, "give_notice", json!({"date": "2026-11-01", "by": "Agent"})).await, "invalid", "lessee or the landlord");
+    let noticed = t.k.run_action(&manager, "Lease", fourth, "give_notice", json!({"date": "2026-11-01", "by": "Lessee"})).await.expect("notice");
+    assert_eq!(noticed["leaving_on"], "2026-12-01", "thirty days on");
+    refused(t.k.run_action(&manager, "Lease", fourth, "give_notice", json!({"date": "2026-11-02", "by": "Landlord"})).await, "invalid", "notice was given on");
+    let overlap = uid(&t.insert(&manager, "Lease", lease(u104, ana, "2026-11-20", "2027-03-31", "20000", "Monthly", json!([]))).await["id"]);
+    refused(t.k.run_action(&manager, "Lease", overlap, "activate", Value::Null).await, "invalid", "let on some of these days");
+    ferrum_app_property::maintenance_on(&k, day("2026-12-15")).await.expect("upkeep");
+    let l4 = t.get("Lease", fourth).await;
+    assert_eq!((l4["status"].as_str(), l4["terminated_on"].as_str()), (Some("Terminated"), Some("2026-12-01")));
+    let periods = t.periods(fourth).await;
+    assert_eq!(periods.last().unwrap(), &("2026-12-01".to_string(), "2026-12-01".to_string(), 645.16), "one day of December's 31");
+    assert_eq!(t.status(u104).await, "Vacant");
+    let next = uid(&t.insert(&manager, "Lease", lease(u104, ana, "2026-12-02", "2027-03-31", "20000", "Monthly", json!([]))).await["id"]);
+    t.k.run_action(&manager, "Lease", next, "activate", Value::Null).await.expect("the days after notice ran out are free");
+    // The deposit given back, less what was kept and why.
+    refused(t.k.run_action(&manager, "Lease", second, "return_deposit", json!({})).await, "invalid", "no deposit was held");
+    refused(t.k.run_action(&manager, "Lease", fourth, "return_deposit", json!({"kept": "5000"})).await, "invalid", "says why");
+    refused(t.k.run_action(&manager, "Lease", fourth, "return_deposit", json!({"kept": "50000", "why": "x"})).await, "invalid", "from nothing to the deposit");
+    t.k.run_action(&manager, "Lease", fourth, "return_deposit", json!({"kept": "5000", "why": "A broken window"})).await.expect("given back");
+    let l4 = t.get("Lease", fourth).await;
+    let back = t.get("JournalEntry", uid(&l4["deposit_return_entry"])).await;
+    let mut lines: Vec<(String, f64, f64)> =
+        back["accounts"].as_array().unwrap().iter().map(|l| (l["account"].as_str().unwrap().into(), dec(&l["debit"]), dec(&l["credit"]))).collect();
+    lines.sort_by(|x, y| (x.1, x.2).partial_cmp(&(y.1, y.2)).unwrap());
+    assert_eq!(lines[2], (held.as_str().unwrap().to_string(), 40000.0, 0.0), "the deposit leaves what is held");
+    assert_eq!((lines[0].0.as_str(), lines[0].2), (other_income.as_str().unwrap(), 5000.0), "what was kept");
+    assert_eq!(lines[1].2, 35000.0, "the rest owed back to Cy");
+    assert_eq!(dec(&l4["deposit_kept"]), 5000.0);
+    refused(t.k.run_action(&manager, "Lease", fourth, "return_deposit", json!({})).await, "invalid", "given back already");
 }

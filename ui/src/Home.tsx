@@ -1,5 +1,5 @@
 // The units by building, each let, vacant or under maintenance; the leases ending in the next 60
-// days; and the requests still open, urgent first. Each opens its record.
+// days, at their end or on notice; and the requests still open, urgent first. Each opens its record.
 
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
@@ -26,12 +26,17 @@ export function byBuilding(units: Row[]): Map<string, Row[]> {
   return out;
 }
 
-/** Active leases ending from `today` to `days` days on, soonest first. */
+/** A lease's last day: the day its notice runs out, when notice was given, else its end. */
+export function lastDay(l: Row): string {
+  return String(l.leaving_on ?? l.ends_on ?? "");
+}
+
+/** Active leases ending from `today` to `days` days on, at their end or on notice, soonest first. */
 export function endingSoon(leases: Row[], today: string, days = 60): Row[] {
   const last = new Date(Date.parse(today) + days * 86_400_000).toISOString().slice(0, 10);
   return leases
-    .filter((l) => l.status === "Active" && typeof l.ends_on === "string" && l.ends_on >= today && l.ends_on <= last)
-    .sort((a, b) => String(a.ends_on).localeCompare(String(b.ends_on)));
+    .filter((l) => l.status === "Active" && lastDay(l) !== "" && lastDay(l) >= today && lastDay(l) <= last)
+    .sort((a, b) => lastDay(a).localeCompare(lastDay(b)));
 }
 
 export function Home() {
@@ -80,7 +85,8 @@ export function Home() {
             {ending.map((l) => (
               <li key={l.id}>
                 <Link to={`/e/Lease/${l.id}`}>
-                  {String(l.number ?? "")} · ends {String(l.ends_on)}
+                  {String(l.number ?? "")} · ends {lastDay(l)}
+                  {l.leaving_on ? ` on notice from the ${String(l.notice_by ?? "").toLowerCase()}` : ""}
                 </Link>
               </li>
             ))}

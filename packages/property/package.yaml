@@ -26,6 +26,8 @@ roles:
       - {entity: Item, read: true}
       - {entity: Company, read: true}
       - {entity: SalesInvoice, read: true, create: true}
+      - {entity: Account, read: true}
+      - {entity: JournalEntry, read: true}
   - name: Facilities
     description: Works maintenance requests and inspections; sees units.
     permissions:
