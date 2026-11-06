@@ -59,8 +59,15 @@ pub(crate) fn rent_on(lease: &Doc, day: NaiveDate) -> Decimal {
 }
 
 /// A period's invoice lines from `from` to `to`, a period cut short owing its days' share: the rent
-/// in effect on its first day, then each charge, as (item, what it comes to, what it is).
-pub(crate) fn period_lines(lease: &Doc, rent_item: Uuid, from: NaiveDate, to: NaiveDate) -> Vec<(Option<String>, Decimal, String)> {
+/// in effect on its first day, then each charge, then its service charge when it pays one, as (item,
+/// what it comes to, what it is).
+pub(crate) fn period_lines(
+    lease: &Doc,
+    rent_item: Uuid,
+    from: NaiveDate,
+    to: NaiveDate,
+    service: Option<&crate::service::Service>,
+) -> Vec<(Option<String>, Decimal, String)> {
     let (days, whole) = days_of(from, to, months_of(s(lease, "frequency").unwrap_or("Monthly")));
     let cut = if days < whole { format!(" ({days} of {whole} days)") } else { String::new() };
     let what = |name: &str| format!("{name}, {from} to {to}{cut}");
@@ -68,6 +75,10 @@ pub(crate) fn period_lines(lease: &Doc, rent_item: Uuid, from: NaiveDate, to: Na
     out.extend(
         rows(lease, "charges").iter().map(|c| (s(c, "item").map(str::to_string), share(d(c, "amount"), days, whole), what(s(c, "charge").unwrap_or("Charge")))),
     );
+    // Its unit's share of the building's service charge, for the period's days of the year.
+    if let Some(sv) = service {
+        out.push((Some(sv.item.to_string()), sv.for_days(days), what("Service charge")));
+    }
     out
 }
 
@@ -105,10 +116,11 @@ async fn credit_after(k: &Kernel, ctx: &Ctx, tx: &mut Tx, lease: &Doc, last: Nai
         let si = k.get_tx(ctx, tx, "SalesInvoice", invoice, true).await?;
         // The days it keeps: up to the last day, none when the period starts after it.
         let to = last.max(from - Duration::days(1));
-        let kept = period_lines(lease, rent_item, from, to);
+        let service = crate::service::service_for(tx, ctx.tenant, lease, from).await?;
+        let kept = period_lines(lease, rent_item, from, to, service.as_ref());
         match si.get("docstatus").and_then(Value::as_i64) {
             Some(1) => {
-                let billed = period_lines(lease, rent_item, from, billed_to);
+                let billed = period_lines(lease, rent_item, from, billed_to, service.as_ref());
                 let back: Vec<(Option<String>, Decimal, String)> = billed
                     .into_iter()
                     .zip(&kept)
@@ -282,6 +294,7 @@ impl DocHook for LeaseHook {
                 "rent_index",
                 "index_cap",
                 "index_floor",
+                "pays_service_charge",
                 "deposit",
                 "notice_days",
             ]
@@ -500,7 +513,8 @@ pub(crate) async fn upkeep(k: &Kernel, tenant: Uuid, schema: Arc<Schema>, today:
                     k.set_child_rows_tx(&ctx, &mut tx, "Lease", "rent_reviews", lease, reviews.clone()).await?;
                     doc.insert("rent_reviews".into(), json!(reviews));
                 }
-                let lines = period_lines(&doc, rent_item, from, to);
+                let service = crate::service::service_for(&mut tx, tenant, &doc, from).await?;
+                let lines = period_lines(&doc, rent_item, from, to, service.as_ref());
                 let amount: Decimal = lines.iter().map(|l| l.1).sum();
                 let items = invoice_lines(&lines, "1");
                 let remarks = format!("Lease {}, {from} to {to}", s(&doc, "number").unwrap_or_default());
