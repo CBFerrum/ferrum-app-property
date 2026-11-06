@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.3
+
+Found walking it in a browser on 7 November: a lease indexed from 1,000 to 1,030 still showed 1,000
+a month to its owner on the portal.
+
+- "Your home" and "Properties you own" show a lease's rent in effect on the workspace's day: its
+  latest review from that day or before (by hand or by indexing), else its starting rent, as each
+  period is invoiced.
+
 ## 0.7.2
 
 Found walking it in a browser on 6 November.
