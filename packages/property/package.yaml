@@ -2,14 +2,14 @@ package: property
 version: 0.1.0
 label: Property
 description: "Buildings and units, leases with rent and charges invoiced each period through ERP, inspections and maintenance requests"
-depends: [core, selling, accounting]
+depends: [core, selling, buying, accounting]
 
 modules:
   - name: property
     label: Property
     icon: building-2
     order: 51
-    items: [Lease, Unit, Building, RentInvoice, Inspection, RepairRequest, ServiceChargeBudget, RentIndex, PropertySettings]
+    items: [Lease, Unit, Building, RentInvoice, OwnerStatement, Inspection, RepairRequest, ServiceChargeBudget, RentIndex, PropertySettings]
 
 roles:
   - name: Property Manager
@@ -21,6 +21,9 @@ roles:
       - {entity: Lease, read: true, write: true, create: true, export: true}
       - {entity: RentIndex, read: true, write: true, create: true}
       - {entity: ServiceChargeBudget, read: true, write: true, create: true, export: true}
+      - {entity: OwnerStatement, read: true, write: true, create: true, export: true}
+      - {entity: Supplier, read: true}
+      - {entity: PurchaseInvoice, read: true}
       - {entity: RentInvoice, read: true, export: true}
       - {entity: Inspection, read: true, write: true, create: true}
       - {entity: RepairRequest, read: true, write: true, create: true}

@@ -1,6 +1,6 @@
 id: property
 name: Property
-version: 0.6.0
+version: 0.7.0
 publisher: cbferrum
 summary: "Buildings and units, leases invoiced each period through ERP, rent reviews, notice, late fees and deposits through the books, repairs and inspections, and portal pages for lessees and owners"
 description: README.md

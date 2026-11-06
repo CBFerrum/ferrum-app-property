@@ -5,7 +5,9 @@
 //! lease and freeing the unit; a quarterly lease's last period cut at its end; a lease ended early,
 //! invoiced to its last day; urgent requests taking a unit out of service until done; who may do
 //! what; the portal's "Your home", where a lessee sees only their leases and asks for repairs only
-//! in a unit they rent now; and "Properties you own", where an owner sees only their buildings, with
+//! in a unit they rent now; owners' statements, the rent collected less the management fee and the
+//! expenses charged to them, billed to the company as their share; and "Properties you own", where an
+//! owner sees only their buildings, with
 //! the rent invoiced and still owed once issued.
 
 use ferrum_kernel::secret::SecretKey;
@@ -548,6 +550,52 @@ async fn scenario() {
         assert!(none["properties"].as_array().unwrap().is_empty(), "{none}");
     }
     assert!(matches!(call(&k, None, "GET", "portal/owner", Value::Null).await, Err(Error::Unauthorized(_))));
+
+    // ───────────── the owner's statement ─────────────
+    // The boiler's repair cost 800, charged to the owner; the company keeps 10% for managing.
+    t.k.update(&manager, "RepairRequest", boiler, obj(json!({"cost": "800"})), None).await.expect("its cost");
+    t.k.update(&manager, "Building", tower, obj(json!({"management_fee_percent": "10"})), None).await.unwrap();
+    let statement = |from: &str, to: &str| json!({"building": tower.to_string(), "period_from": from, "period_to": to, "expenses": [{"description": "Gutters cleaned", "amount": "500"}]});
+    let os = t.insert(&manager, "OwnerStatement", statement("2026-01-01", "2030-12-31")).await;
+    assert_eq!(
+        (dec(&os["collected"]), dec(&os["management_fee"]), dec(&os["expenses_total"]), dec(&os["payout"])),
+        (12000.0, 1200.0, 1300.0, 9500.0),
+        "Ana's 12000 paid, less 10% and the expenses: {os:?}"
+    );
+    let lines: Vec<(String, f64, bool)> = os["expenses"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| (l["description"].as_str().unwrap().to_string(), dec(&l["amount"]), l["repair"].is_string()))
+        .collect();
+    assert!(
+        lines.contains(&("Gutters cleaned".to_string(), 500.0, false)) && lines.iter().any(|l| l.0.contains("No hot water") && l.1 == 800.0 && l.2),
+        "one added by hand, and the repair: {lines:?}"
+    );
+    refused(t.k.insert(&manager, "OwnerStatement", obj(statement("2026-09-01", "2026-09-30"))).await, "invalid", "covers some of these days already");
+    let os = uid(&os["id"]);
+    refused(t.k.run_action(&manager, "OwnerStatement", os, "bill_owner", json!({})).await, "invalid", "names no owner in the books");
+    let olu_books = uid(&t.insert(&a, "Supplier", json!({"supplier_name": "Olu Owner"})).await["id"]);
+    t.k.update(&manager, "Building", tower, obj(json!({"owner_supplier": olu_books.to_string()})), None).await.unwrap();
+    refused(t.k.run_action(&manager, "OwnerStatement", os, "bill_owner", json!({})).await, "invalid", "no Owner Payout Item");
+    let payout_item = uid(&t.insert(&a, "Item", item("OWNER-PAYOUT")).await["id"]);
+    let property_settings = uid(&t.find_one("PropertySettings", json!({})).await["id"]);
+    t.k.update(&manager, "PropertySettings", property_settings, obj(json!({"owner_payout_item": payout_item.to_string()})), None).await.unwrap();
+    let billed = t.k.run_action(&manager, "OwnerStatement", os, "bill_owner", json!({})).await.expect("billed");
+    let bill = t.get("PurchaseInvoice", uid(&billed["purchase_invoice"]["id"])).await;
+    assert_eq!(
+        (bill["supplier"].as_str(), dec(&bill["grand_total"]), bill["docstatus"].as_i64()),
+        (Some(olu_books.to_string().as_str()), 9500.0, Some(0)),
+        "the owner's bill, for accounts to issue"
+    );
+    refused(t.k.update(&manager, "OwnerStatement", os, obj(json!({"period_to": "2031-12-31"})), None).await, "invalid", "kept as it was billed");
+    // Its owner sees it on the portal; once accounts issue the bill, what is still to pay.
+    let mine = call(&k, Some(&olu), "GET", "portal/owner", Value::Null).await.unwrap();
+    let st = &mine["properties"][0]["statements"][0];
+    assert_eq!((dec(&st["collected"]), dec(&st["payout"]), st["still_to_pay"].is_null()), (12000.0, 9500.0, true), "{st}");
+    t.k.submit(&a, "PurchaseInvoice", uid(&bill["id"]), None).await.expect("issued");
+    let mine = call(&k, Some(&olu), "GET", "portal/owner", Value::Null).await.unwrap();
+    assert_eq!(dec(&mine["properties"][0]["statements"][0]["still_to_pay"]), 9500.0);
 
     // ───────────── days invoiced past an early end, given back ─────────────
     let u105 = uid(&t.insert(&manager, "Unit", unit("105")).await["id"]);

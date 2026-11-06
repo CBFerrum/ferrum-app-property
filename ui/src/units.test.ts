@@ -57,3 +57,13 @@ describe("the owners' page", () => {
     expect([amount(null), amount(""), amount("n/a")]).toEqual(["", "", "n/a"]);
   });
 });
+
+describe("owners' statements", () => {
+  it("say where the payout stands", async () => {
+    const { payoutState } = await import("./Portal");
+    const s = { number: "OS-1", period_from: "2026-08-01", period_to: "2026-10-31", collected: "12000", management_fee: "1200", expenses: "1300", payout: "9500" };
+    expect(payoutState(s)).toBe("Waiting for accounts");
+    expect(payoutState({ ...s, still_to_pay: "9500" })).toBe("9500 to pay");
+    expect(payoutState({ ...s, still_to_pay: "0" })).toBe("Paid");
+  });
+});
