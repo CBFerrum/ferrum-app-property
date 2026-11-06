@@ -9,7 +9,7 @@
 
 use crate::{date, obj, refresh_unit};
 use async_trait::async_trait;
-use chrono::{Duration, Months, NaiveDate, Utc};
+use chrono::{Duration, Months, NaiveDate};
 use ferrum_domain::util::{d, elevated, id, money, round, rows, s};
 use ferrum_kernel::{Ctx, Doc, DocHook, Error, HookCtx, Kernel, Result, Tx};
 use ferrum_meta::effective::Schema;
@@ -194,7 +194,7 @@ impl DocHook for LeaseHook {
                     .and_then(Value::as_str)
                     .filter(|b| ["Lessee", "Landlord"].contains(b))
                     .ok_or_else(|| Error::field("by", "is the lessee or the landlord"))?;
-                if date(doc, "starts_on").is_some_and(|f| on < f) || on > Utc::now().date_naive() {
+                if date(doc, "starts_on").is_some_and(|f| on < f) || on > hc.ctx.today() {
                     return Err(Error::field("date", "is from the lease's start to today"));
                 }
                 if let Some(given) = s(doc, "notice_given_on") {
@@ -286,7 +286,7 @@ impl DocHook for LeaseHook {
                     .and_then(Value::as_str)
                     .and_then(|v| NaiveDate::parse_from_str(v, "%Y-%m-%d").ok())
                     .ok_or_else(|| Error::field("date", "is the lease's last day, YYYY-MM-DD"))?;
-                if date(doc, "starts_on").is_some_and(|f| on < f) || on > Utc::now().date_naive() {
+                if date(doc, "starts_on").is_some_and(|f| on < f) || on > hc.ctx.today() {
                     return Err(Error::field("date", "is from the lease's start to today"));
                 }
                 hc.kernel.set_values_tx(&system, hc.tx, "Lease", lease, obj(json!({"status": "Terminated", "terminated_on": on.to_string()}))).await?;

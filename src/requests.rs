@@ -3,7 +3,6 @@
 
 use crate::{obj, refresh_unit};
 use async_trait::async_trait;
-use chrono::Utc;
 use ferrum_domain::util::{elevated, id, s};
 use ferrum_kernel::{Doc, DocHook, HookCtx, Result};
 use serde_json::json;
@@ -22,7 +21,7 @@ impl DocHook for RequestHook {
             && old.is_none_or(|o| s(o, "status") != Some("Done"))
             && let Some(request) = id(doc, "id")
         {
-            hc.kernel.set_values_tx(&system, hc.tx, "RepairRequest", request, obj(json!({"done_on": Utc::now().date_naive().to_string()}))).await?;
+            hc.kernel.set_values_tx(&system, hc.tx, "RepairRequest", request, obj(json!({"done_on": hc.ctx.today().to_string()}))).await?;
         }
         // The unit it is on now, and the one it was moved from.
         let mut units = vec![id(doc, "unit")];

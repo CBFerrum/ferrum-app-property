@@ -1,6 +1,7 @@
 // Property's own interface at /property/: the units by building with their leases and requests,
-// with every record in the records frame's lists and forms. The same release draws its page of the
-// workspace's portal, "Your home" at /portal/home/ (Ferrum docs/plan/apps-ui.md §9.1).
+// with every record in the records frame's lists and forms. The same release draws its pages of the
+// workspace's portal, "Your home" at /portal/home/ and "Properties you own" at /portal/owner/
+// (Ferrum docs/plan/apps-ui.md §9.1).
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode, useEffect } from "react";
@@ -32,9 +33,11 @@ function Started() {
   return null;
 }
 
-/** The portal's page, when the platform serves this release there. */
+/** The portal's pages, when the platform serves this release there. */
 const PORTAL = "portal/home";
-const onPortal = bootstrap()?.app?.entry === PORTAL;
+const OWNER = "portal/owner";
+const entry = bootstrap()?.app?.entry;
+const onPortal = entry === PORTAL || entry === OWNER;
 
 if (!onPortal) setFrameMode("app", ["property"]);
 
@@ -52,6 +55,23 @@ const portalRoutes = [
       { index: true, lazy: () => import("./Portal").then((m) => ({ Component: m.PortalHome })) },
       { path: "new", lazy: () => import("./Portal").then((m) => ({ Component: m.PortalNewRequest })) },
       { path: "*", element: <NotFound back="Go to your home" /> },
+    ],
+  },
+];
+
+const ownerRoutes = [
+  {
+    path: "/",
+    element: (
+      <main>
+        <Started />
+        <Outlet />
+      </main>
+    ),
+    errorElement: <RouteError />,
+    children: [
+      { index: true, lazy: () => import("./Portal").then((m) => ({ Component: m.PortalOwner })) },
+      { path: "*", element: <NotFound back="Go to your properties" /> },
     ],
   },
 ];
@@ -78,9 +98,12 @@ const staffRoutes = [
   },
 ];
 
-const router = onPortal
-  ? createBrowserRouter(portalRoutes, { basename: routeBase(PORTAL) })
-  : createBrowserRouter(staffRoutes, { basename: routeBase("property") });
+const router =
+  entry === OWNER
+    ? createBrowserRouter(ownerRoutes, { basename: routeBase(OWNER) })
+    : onPortal
+      ? createBrowserRouter(portalRoutes, { basename: routeBase(PORTAL) })
+      : createBrowserRouter(staffRoutes, { basename: routeBase("property") });
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

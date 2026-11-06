@@ -38,3 +38,5 @@ roles:
 
 personal_data:
   - {entity: RepairRequest, match: reported_by, erase: [reported_by]}
+  - {entity: Building, match: owner_email, erase: [owner_email]}
+  - {entity: Building, match: manager_email, erase: [manager_email]}

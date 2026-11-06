@@ -27,7 +27,8 @@
     - {name: building_name, type: data, required: true, in_list: true}
     - {name: address, type: text}
     - {name: manager_email, type: email, label: Manager}
-  list: {columns: [building_name, manager_email], sort: building_name asc}
+    - {name: owner_email, type: email, label: Owner, in_filter: true, description: "Who owns it: signed in to the portal with this address, they see its units, leases, rent invoiced and still owed, and repairs under Properties You Own"}
+  list: {columns: [building_name, owner_email, manager_email], sort: building_name asc}
 
 - name: Unit
   label: Unit
