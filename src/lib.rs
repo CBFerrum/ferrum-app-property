@@ -6,8 +6,11 @@
 //! * `requests`: an urgent maintenance request takes its unit out of service until it is done.
 //! * `service`: a building's service charge budget shared among its units by floor area, invoiced
 //!   with the rent of the leases that pay it, and reconciled with what was spent.
+//! * `statements`: an owner's statement, what was collected less the management fee and the
+//!   expenses charged to them, billed to the company as their share.
 //! * `site`: the portal's "Your home", a lessee's leases, rent invoiced and repairs asked for; and
-//!   "Properties you own", an owner's buildings with their units, leases, rent and repairs.
+//!   "Properties you own", an owner's buildings with their units, leases, rent, repairs and billed
+//!   statements.
 //!
 //! This app's own design; no code was copied (docs/PROVENANCE.md). Hooks are registered per entity,
 //! so a workspace without the `property` package never runs them.
@@ -16,6 +19,7 @@ mod leases;
 mod requests;
 mod service;
 mod site;
+mod statements;
 
 use chrono::NaiveDate;
 use ferrum_domain::reports::ReportSource;
@@ -41,7 +45,8 @@ pub fn register(hooks: &mut HookRegistry) {
     hooks
         .register("Lease", Arc::new(leases::LeaseHook))
         .register("RepairRequest", Arc::new(requests::RequestHook))
-        .register("ServiceChargeBudget", Arc::new(service::BudgetHook));
+        .register("ServiceChargeBudget", Arc::new(service::BudgetHook))
+        .register("OwnerStatement", Arc::new(statements::StatementHook));
     hooks.add_site("property", Arc::new(site::PropertySite));
 }
 
