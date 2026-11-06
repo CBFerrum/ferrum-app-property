@@ -556,7 +556,7 @@ async fn scenario() {
     t.k.update(&manager, "RepairRequest", boiler, obj(json!({"cost": "800"})), None).await.expect("its cost");
     t.k.update(&manager, "Building", tower, obj(json!({"management_fee_percent": "10"})), None).await.unwrap();
     let statement = |from: &str, to: &str| json!({"building": tower.to_string(), "period_from": from, "period_to": to, "expenses": [{"description": "Gutters cleaned", "amount": "500"}]});
-    let os = t.insert(&manager, "OwnerStatement", statement("2026-08-01", "2030-12-31")).await;
+    let os = t.insert(&manager, "OwnerStatement", statement("2026-01-01", "2030-12-31")).await;
     assert_eq!(
         (dec(&os["collected"]), dec(&os["management_fee"]), dec(&os["expenses_total"]), dec(&os["payout"])),
         (12000.0, 1200.0, 1300.0, 9500.0),
