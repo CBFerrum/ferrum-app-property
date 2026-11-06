@@ -527,9 +527,9 @@ async fn scenario() {
     assert_eq!((now_101["starts_on"].as_str(), now_101["ends_on"].as_str(), dec(&now_101["rent"])), (Some("2026-10-01"), Some("2026-12-31"), 30000.0));
     // Only issued invoices, a late fee with its period, by the month the period starts in, newest first.
     let paid_month = t.find_one("RentInvoice", json!({"sales_invoice": issued.to_string()})).await["period_from"].as_str().unwrap()[..7].to_string();
-    let rent: Vec<(String, f64, f64)> =
+    let by_month: Vec<(String, f64, f64)> =
         harbour["rent"].as_array().unwrap().iter().map(|m| (m["month"].as_str().unwrap().into(), dec(&m["invoiced"]), dec(&m["owed"]))).collect();
-    assert_eq!(rent, vec![("2026-08".to_string(), 20900.0, 20900.0), (paid_month, 32000.0, 20000.0)], "rent and parking; rent and its fee");
+    assert_eq!(by_month, vec![("2026-08".to_string(), 20900.0, 20900.0), (paid_month, 32000.0, 20000.0)], "rent and parking; rent and its fee");
     // Repairs open first, then those done lately, with their units.
     let repairs: Vec<(String, String, String)> = harbour["repairs"]
         .as_array()
@@ -548,4 +548,59 @@ async fn scenario() {
         assert!(none["properties"].as_array().unwrap().is_empty(), "{none}");
     }
     assert!(matches!(call(&k, None, "GET", "portal/owner", Value::Null).await, Err(Error::Unauthorized(_))));
+
+    // ───────────── days invoiced past an early end, given back ─────────────
+    let u105 = uid(&t.insert(&manager, "Unit", unit("105")).await["id"]);
+    let quarters = uid(&t.insert(&manager, "Lease", lease(u105, bo, "2026-07-01", "2027-06-30", "92000", "Quarterly", with_parking.clone())).await["id"]);
+    t.k.run_action(&manager, "Lease", quarters, "activate", Value::Null).await.unwrap();
+    ferrum_app_property::maintenance_on(&k, day("2026-10-05")).await.expect("upkeep");
+    let quarter = |from: &'static str| {
+        let t = &t;
+        async move { t.find("RentInvoice", json!({"lease": quarters.to_string(), "period_from": from})).await }
+    };
+    let (q3, q4) = (quarter("2026-07-01").await.remove(0), quarter("2026-10-01").await.remove(0));
+    let (q3_invoice, q4_invoice) = (uid(&q3["sales_invoice"]), uid(&q4["sales_invoice"]));
+    t.k.submit(&a, "SalesInvoice", q3_invoice, None).await.expect("accounts issue the third quarter");
+    // Ended on 31 August: September given back on the issued quarter, and the drafted one gone.
+    let ended = t.k.run_action(&manager, "Lease", quarters, "terminate", json!({"date": "2026-08-31"})).await.expect("ended early");
+    assert_eq!(ended["periods_credited"], 2);
+    let q3 = t.get("RentInvoice", uid(&q3["id"])).await;
+    assert_eq!(q3["billed_to"], "2026-08-31");
+    let note = t.get("SalesInvoice", uid(&q3["credit_note"])).await;
+    assert_eq!((note["is_return"].as_bool(), note["return_against"].as_str()), (Some(true), Some(q3_invoice.to_string().as_str())));
+    let mut back: Vec<(String, f64, f64)> =
+        note["items"].as_array().unwrap().iter().map(|l| (l["item"].as_str().unwrap().to_string(), dec(&l["qty"]), dec(&l["price_list_rate"]))).collect();
+    back.sort_by(|x, y| x.2.total_cmp(&y.2));
+    assert_eq!(back, vec![(parking.to_string(), -1.0, 652.17), (rent.to_string(), -1.0, 30000.0)], "30 of the quarter's 92 days of rent and parking");
+    assert!(quarter("2026-10-01").await.is_empty(), "a drafted period wholly after the last day goes");
+    assert!(t.k.get(&a, "SalesInvoice", q4_invoice, false).await.is_err(), "and its draft with it");
+    // Notice that ends a lease within a drafted month makes that month again for its days, and an
+    // earlier end later makes it again.
+    let u106 = uid(&t.insert(&manager, "Unit", unit("106")).await["id"]);
+    let mut monthly = lease(u106, cy, "2026-09-01", "2027-08-31", "31000", "Monthly", json!([]));
+    monthly["notice_days"] = json!(14);
+    let months = uid(&t.insert(&manager, "Lease", monthly).await["id"]);
+    t.k.run_action(&manager, "Lease", months, "activate", Value::Null).await.unwrap();
+    ferrum_app_property::maintenance_on(&k, day("2026-10-05")).await.expect("upkeep");
+    let october = || {
+        let t = &t;
+        async move { t.find_one("RentInvoice", json!({"lease": months.to_string(), "period_from": "2026-10-01"})).await }
+    };
+    let october_invoice = uid(&october().await["sales_invoice"]);
+    let noticed = t.k.run_action(&manager, "Lease", months, "give_notice", json!({"date": "2026-10-01", "by": "Lessee"})).await.expect("notice");
+    assert_eq!((noticed["leaving_on"].as_str(), noticed["periods_credited"].as_i64()), (Some("2026-10-15"), Some(1)));
+    let remade = |days: &'static str, amount: f64| {
+        let t = &t;
+        async move {
+            let r = october().await;
+            let inv = t.get("SalesInvoice", october_invoice).await;
+            assert_eq!((dec(&r["amount"]), dec(&inv["items"][0]["price_list_rate"])), (amount, amount));
+            assert!(inv["items"][0]["description"].as_str().unwrap().ends_with(days), "{}", inv["items"][0]);
+            r["period_to"].as_str().unwrap().to_string()
+        }
+    };
+    assert_eq!(remade("to 2026-10-15 (15 of 31 days)", 15000.0).await, "2026-10-15");
+    t.k.run_action(&manager, "Lease", months, "terminate", json!({"date": "2026-10-10"})).await.expect("ended sooner");
+    assert_eq!(remade("to 2026-10-10 (10 of 31 days)", 10000.0).await, "2026-10-10");
+    assert_eq!(t.periods(months).await[0], ("2026-09-01".to_string(), "2026-09-30".to_string(), 31000.0), "September as it was");
 }
