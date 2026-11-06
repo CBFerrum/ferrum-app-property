@@ -146,6 +146,59 @@ async fn credit_after(k: &Kernel, ctx: &Ctx, tx: &mut Tx, lease: &Doc, last: Nai
     Ok(n)
 }
 
+/// An index's value on `day`: its latest from that day or before.
+fn index_at(values: &[(NaiveDate, Decimal)], day: NaiveDate) -> Option<Decimal> {
+    values.iter().filter(|(from, _)| *from <= day).max_by_key(|(from, _)| *from).map(|(_, v)| *v)
+}
+
+/// A rent after a year of an index going from `base` to `now`: its rise, at most `cap` percent, and
+/// at least `floor` (no fall when there is none), to the cent.
+pub(crate) fn indexed(rent: Decimal, base: Decimal, now: Decimal, cap: Option<Decimal>, floor: Option<Decimal>) -> Decimal {
+    if base <= Decimal::ZERO {
+        return rent;
+    }
+    let mut rise = (now / base - Decimal::ONE) * Decimal::ONE_HUNDRED;
+    if let Some(cap) = cap {
+        rise = rise.min(cap);
+    }
+    rise = rise.max(floor.unwrap_or(Decimal::ZERO));
+    round(rent * (Decimal::ONE_HUNDRED + rise) / Decimal::ONE_HUNDRED, 2)
+}
+
+/// An indexed lease's yearly review for the period starting `from`: on the last anniversary of its
+/// start on or before it, its rent follows the index since the anniversary before (or its start),
+/// unless a review from that day or later was made. The review, to keep with the others.
+async fn index_review(k: &Kernel, ctx: &Ctx, tx: &mut Tx, lease: &Doc, from: NaiveDate) -> Result<Option<Doc>> {
+    let (Some(index), Some(start)) = (id(lease, "rent_index"), date(lease, "starts_on")) else { return Ok(None) };
+    let year = |n: u32| start.checked_add_months(Months::new(12 * n));
+    let mut years = 0;
+    while year(years + 1).is_some_and(|a| a <= from) {
+        years += 1;
+    }
+    let (Some(on), Some(before)) = (year(years).filter(|_| years > 0), year(years.saturating_sub(1))) else { return Ok(None) };
+    if rows(lease, "rent_reviews").iter().any(|r| date(r, "effective_from").is_some_and(|d| d >= on)) {
+        return Ok(None);
+    }
+    let published = k.get_tx(ctx, tx, "RentIndex", index, false).await?;
+    let values: Vec<(NaiveDate, Decimal)> = rows(&published, "values").iter().filter_map(|v| Some((date(v, "month")?, d(v, "value")))).collect();
+    let (Some(base), Some(now)) = (index_at(&values, before), index_at(&values, on)) else { return Ok(None) };
+    let floor = lease.get("index_floor").filter(|v| !v.is_null()).map(|_| d(lease, "index_floor"));
+    let cap = lease.get("index_cap").filter(|v| !v.is_null()).map(|_| d(lease, "index_cap"));
+    let rent = indexed(rent_on(lease, on - Duration::days(1)), base, now, cap, floor);
+    let name = s(&published, "index_name").unwrap_or("its index");
+    Ok(Some(obj(
+        json!({"effective_from": on.to_string(), "rent": money(rent), "note": format!("Indexed to {name}: {} over {}", now.normalize(), base.normalize())}),
+    )))
+}
+
+/// A lease's rent reviews as rows of their own fields (their ids kept, nothing the table adds).
+fn reviews_of(lease: &Doc) -> Vec<Doc> {
+    rows(lease, "rent_reviews")
+        .into_iter()
+        .map(|r| r.into_iter().filter(|(k, _)| matches!(k.as_str(), "id" | "effective_from" | "rent" | "note")).collect())
+        .collect()
+}
+
 /// The lease's last day: its end, or sooner when it was ended early or notice was given.
 pub(crate) fn last_day(lease: &Doc) -> Option<NaiveDate> {
     let end = date(lease, "ends_on")?;
@@ -217,9 +270,23 @@ impl DocHook for LeaseHook {
         }
         if let Some(o) = old
             && s(o, "status") != Some("Draft")
-            && ["unit", "lessee", "starts_on", "ends_on", "rent", "frequency", "charges", "rent_reviews", "deposit", "notice_days"]
-                .iter()
-                .any(|k| o.get(*k) != doc.get(*k))
+            && [
+                "unit",
+                "lessee",
+                "starts_on",
+                "ends_on",
+                "rent",
+                "frequency",
+                "charges",
+                "rent_reviews",
+                "rent_index",
+                "index_cap",
+                "index_floor",
+                "deposit",
+                "notice_days",
+            ]
+            .iter()
+            .any(|k| o.get(*k) != doc.get(*k))
         {
             return Err(Error::invalid("a lease past its draft keeps its terms: end it and make another"));
         }
@@ -318,11 +385,7 @@ impl DocHook for LeaseHook {
                 if date(doc, "next_invoice_on").is_some_and(|next| on < next) || last_day(doc).is_some_and(|l| on > l) {
                     return Err(Error::field("date", "falls on or after the next period to invoice, within the lease"));
                 }
-                // The reviews made, as rows of their own fields (their ids kept, nothing the table adds).
-                let mut reviews: Vec<Doc> = rows(doc, "rent_reviews")
-                    .into_iter()
-                    .map(|r| r.into_iter().filter(|(k, _)| matches!(k.as_str(), "id" | "effective_from" | "rent" | "note")).collect())
-                    .collect();
+                let mut reviews = reviews_of(doc);
                 if reviews.iter().any(|r| date(r, "effective_from").is_some_and(|f| f >= on)) {
                     return Err(Error::field("date", "is after the reviews already made"));
                 }
@@ -417,7 +480,7 @@ pub(crate) async fn upkeep(k: &Kernel, tenant: Uuid, schema: Arc<Schema>, today:
     .fetch_all(&mut *tx)
     .await?;
     for lease in leases {
-        let doc = k.get_tx(&ctx, &mut tx, "Lease", lease, true).await?;
+        let mut doc = k.get_tx(&ctx, &mut tx, "Lease", lease, true).await?;
         let (Some(mut from), Some(end), Some(last)) = (date(&doc, "next_invoice_on"), date(&doc, "ends_on"), last_day(&doc)) else { continue };
         let months = months_of(s(&doc, "frequency").unwrap_or("Monthly"));
         while from <= today && from <= last {
@@ -430,6 +493,13 @@ pub(crate) async fn upkeep(k: &Kernel, tenant: Uuid, schema: Arc<Schema>, today:
                 .fetch_one(&mut *tx)
                 .await?;
             if !done {
+                // An indexed lease's yearly review comes before the period it holds for.
+                if let Some(review) = index_review(k, &ctx, &mut tx, &doc, from).await? {
+                    let mut reviews = reviews_of(&doc);
+                    reviews.push(review);
+                    k.set_child_rows_tx(&ctx, &mut tx, "Lease", "rent_reviews", lease, reviews.clone()).await?;
+                    doc.insert("rent_reviews".into(), json!(reviews));
+                }
                 let lines = period_lines(&doc, rent_item, from, to);
                 let amount: Decimal = lines.iter().map(|l| l.1).sum();
                 let items = invoice_lines(&lines, "1");
@@ -517,10 +587,21 @@ async fn late_fees(k: &Kernel, ctx: &Ctx, tx: &mut Tx, company: Uuid, currency: 
 
 #[cfg(test)]
 mod tests {
-    use super::{days_of, last_day, months_of, period_end, rent_on, share};
+    use super::{days_of, indexed, last_day, months_of, period_end, rent_on, share};
     use chrono::NaiveDate;
     use rust_decimal::Decimal;
     use serde_json::json;
+
+    #[test]
+    fn rent_follows_its_index_within_its_bounds() {
+        let n = |v: &str| v.parse::<Decimal>().unwrap();
+        assert_eq!(indexed(n("10000"), n("100"), n("103"), None, None), n("10300"), "the index's rise");
+        assert_eq!(indexed(n("10000"), n("100"), n("106"), Some(n("4")), None), n("10400"), "at most the cap");
+        assert_eq!(indexed(n("10000"), n("106"), n("102"), None, None), n("10000"), "no fall without a floor");
+        assert_eq!(indexed(n("10000"), n("100"), n("97"), None, Some(n("-2"))), n("9800"), "a fall down to the floor");
+        assert_eq!(indexed(n("10000"), n("100"), n("100.5"), None, Some(n("1"))), n("10100"), "at least the floor");
+        assert_eq!(indexed(n("10000"), n("0"), n("100"), None, None), n("10000"), "no base, no change");
+    }
 
     #[test]
     fn a_period_cut_short_owes_its_days() {
