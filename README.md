@@ -3,14 +3,15 @@
 Property and facilities for [Ferrum](https://github.com/CBFerrum/Ferrum):
 - buildings and their units;
 - leases, with rent and other charges invoiced each period through ERP;
-- inspections, and maintenance requests.
+- inspections, and maintenance requests;
+- the portal's pages for lessees and owners.
 
 | | |
 |---|---|
 | 🏢 App | `property`, native, in the server |
 | 🧩 Package | `property` (needs ERP's selling and accounting) |
-| 🖥️ Interface | its own, at `/property/`: the units by building, the leases ending soon and the open requests, and the records |
-| 🔐 Roles | Property Manager, Facilities; lessees on the portal |
+| 🖥️ Interface | its own, at `/property/`: the units by building, the leases ending soon and the open requests, and the records; on the portal, "Your home" and "Properties you own" |
+| 🔐 Roles | Property Manager, Facilities; lessees and owners on the portal |
 | 📜 Licence | AGPL-3.0-only |
 
 ## Highlights
@@ -50,6 +51,14 @@ Property and facilities for [Ferrum](https://github.com/CBFerrum/Ferrum):
   past their draft, the rent invoiced for each (opening on ERP's "Your invoices"), and the repairs
   they asked for. They ask for a repair only in a unit they rent now; an urgent one holds the unit
   as any other does.
+- **Properties you own, on the portal.** A building names its owner's address. Signed in to the
+  portal with it, the owner sees each of their buildings: its units, let or vacant, and the lease
+  letting each now (to whom, until when, at what rent); the rent, charges and late fees invoiced and
+  still owed, by the month their period starts, from issued invoices only; and its repairs, open or
+  done in the last 90 days. Nobody else's buildings, and nothing of a building without their
+  address.
+- **The workspace's day.** Upkeep, the last day of notice or an early end, and the day a repair was
+  done all go by the workspace's own day, not UTC's.
 
 ## Develop
 
@@ -66,19 +75,22 @@ cd ui && npm run build && npm run check
   a deposit held and given back less what was kept;
 - urgent requests holding a unit;
 - who may do what;
-- the portal: only her leases, repairs only where she rents now.
+- the portal: only her leases, repairs only where she rents now; an owner sees only her building,
+  with the rent issued and what is still owed after a payment.
 
 ## Not yet
 
 - A period already invoiced is not credited back when a lease ends early within it.
 - Escalation by index (rent reviews are amounts from given days).
-- Service-charge budgets shared across a building, and owners' statements for managed property.
-- An owners' portal, and paying rent on the portal (ERP's invoices page shows what is due).
+- Service-charge budgets shared across a building, and owners' statements with management fees,
+  expenses and payouts.
+- Paying rent on the portal (ERP's invoices page shows what is due).
 
 ## Changelog
 
 | Version | Highlights |
 |---|---|
+| **0.3.0** | Owners on the portal: their buildings' units, leases, rent invoiced and still owed, and repairs; dates by the workspace's day. |
 | **0.2.1** | Rebuilt with Ferrum-Frontend bb60115: empty numbers read as the server reads them; settings open as their record. |
 | **0.2.0** | Part periods paid for their days, rent reviews, notice, late fees, and deposits held and given back through the books. |
 | **0.1.5** | Rebuilt with Ferrum-Frontend 00dea07: a workflow state's kept fields are read-only, its needed ones required. |

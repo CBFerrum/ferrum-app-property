@@ -4,8 +4,9 @@
 //! days refused; upkeep invoicing each month's rent and parking once through ERP, then ending the
 //! lease and freeing the unit; a quarterly lease's last period cut at its end; a lease ended early,
 //! invoiced to its last day; urgent requests taking a unit out of service until done; who may do
-//! what; and the portal's "Your home", where a lessee sees only their leases and asks for repairs
-//! only in a unit they rent now.
+//! what; the portal's "Your home", where a lessee sees only their leases and asks for repairs only
+//! in a unit they rent now; and "Properties you own", where an owner sees only their buildings, with
+//! the rent invoiced and still owed once issued.
 
 use ferrum_kernel::secret::SecretKey;
 use ferrum_kernel::tenant::NewTenant;
@@ -487,4 +488,64 @@ async fn scenario() {
     assert_eq!(lines[1].2, 35000.0, "the rest owed back to Cy");
     assert_eq!(dec(&l4["deposit_kept"]), 5000.0);
     refused(t.k.run_action(&manager, "Lease", fourth, "return_deposit", json!({})).await, "invalid", "given back already");
+
+    // ───────────── the portal's "Properties you own" ─────────────
+    t.k.update(&manager, "Building", tower, obj(json!({"owner_email": "Olu@Owners.test"})), None).await.expect("its owner named");
+    let quay = uid(&t.insert(&manager, "Building", json!({"building_name": "Quay House", "owner_email": "someone@else.test"})).await["id"]);
+    t.insert(&manager, "Unit", json!({"unit_number": "1", "building": quay.to_string()})).await;
+    // Accounts issue August's late fee, and Ana pays 12000 of her issued rent.
+    t.k.submit(&a, "SalesInvoice", uid(&fee), None).await.expect("the fee issued");
+    let bank = t.get("Company", company).await["default_bank_account"].clone();
+    let paid = t
+        .insert(
+            &a,
+            "PaymentEntry",
+            json!({"company": company.to_string(), "payment_type": "Receive", "customer": ana.to_string(), "bank_account": bank, "currency": inr["id"],
+                   "paid_amount": "12000", "references": [{"invoice_type": "Sales Invoice", "invoice": issued.to_string(), "allocated_amount": "12000"}]}),
+        )
+        .await;
+    t.k.submit(&a, "PaymentEntry", uid(&paid["id"]), None).await.expect("paid");
+    let olu = portal("olu@owners.test").await;
+    let mine = call(&k, Some(&olu), "GET", "portal/owner", Value::Null).await.unwrap();
+    let properties = mine["properties"].as_array().unwrap();
+    assert_eq!(properties.len(), 1, "only the building naming her: {mine}");
+    let harbour = &properties[0];
+    assert_eq!((harbour["name"].as_str(), harbour["address"].as_str()), (Some("Harbour View"), Some("1 Quay Street")));
+    let units: Vec<(String, String, Option<String>)> = harbour["units"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|u| (u["unit_number"].as_str().unwrap().into(), u["status"].as_str().unwrap().into(), u["lease"]["lessee"].as_str().map(str::to_string)))
+        .collect();
+    let want_units: Vec<(String, String, Option<String>)> =
+        [("101", "Let", Some("Ana Rao")), ("102", "Vacant", None), ("103", "Vacant", None), ("104", "Let", Some("Ana Rao"))]
+            .iter()
+            .map(|(u, s, l)| (u.to_string(), s.to_string(), l.map(str::to_string)))
+            .collect();
+    assert_eq!(units, want_units, "each unit with the lease letting it now");
+    let now_101 = &harbour["units"][0]["lease"];
+    assert_eq!((now_101["starts_on"].as_str(), now_101["ends_on"].as_str(), dec(&now_101["rent"])), (Some("2026-10-01"), Some("2026-12-31"), 30000.0));
+    // Only issued invoices, a late fee with its period, by the month the period starts in, newest first.
+    let paid_month = t.find_one("RentInvoice", json!({"sales_invoice": issued.to_string()})).await["period_from"].as_str().unwrap()[..7].to_string();
+    let rent: Vec<(String, f64, f64)> =
+        harbour["rent"].as_array().unwrap().iter().map(|m| (m["month"].as_str().unwrap().into(), dec(&m["invoiced"]), dec(&m["owed"]))).collect();
+    assert_eq!(rent, vec![("2026-08".to_string(), 20900.0, 20900.0), (paid_month, 32000.0, 20000.0)], "rent and parking; rent and its fee");
+    // Repairs open first, then those done lately, with their units.
+    let repairs: Vec<(String, String, String)> = harbour["repairs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| (r["summary"].as_str().unwrap().into(), r["unit_number"].as_str().unwrap().into(), r["status"].as_str().unwrap().into()))
+        .collect();
+    assert_eq!(repairs.len(), 6, "{repairs:?}");
+    let mut open: Vec<&str> = repairs[..2].iter().map(|r| r.0.as_str()).collect();
+    open.sort();
+    assert_eq!(open, ["Dripping tap", "Window stuck"]);
+    assert!(repairs[2..].iter().all(|r| r.2 == "Done") && repairs.iter().any(|r| r.0 == "No hot water" && r.1 == "102"), "{repairs:?}");
+    // A lessee, a stranger and nobody signed in own nothing here.
+    for who in [&ana_p, &stranger] {
+        let none = call(&k, Some(who), "GET", "portal/owner", Value::Null).await.unwrap();
+        assert!(none["properties"].as_array().unwrap().is_empty(), "{none}");
+    }
+    assert!(matches!(call(&k, None, "GET", "portal/owner", Value::Null).await, Err(Error::Unauthorized(_))));
 }

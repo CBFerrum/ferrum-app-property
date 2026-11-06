@@ -14,7 +14,8 @@ interface Row {
 const rows = (entity: string, filters: unknown[], extra: Record<string, string | number> = {}) =>
   api.get<{ rows: Row[] }>(docPath(entity), { filters: JSON.stringify(filters), limit: 500, ...extra }).then((r) => r.rows);
 
-const TONE: Record<string, "green" | "amber" | "red"> = { Let: "green", Vacant: "amber", "Under Maintenance": "red" };
+/** A unit's status as a badge's tone. */
+export const UNIT_TONE: Record<string, "green" | "amber" | "red"> = { Let: "green", Vacant: "amber", "Under Maintenance": "red" };
 
 /** Units by building id, in the order given. */
 export function byBuilding(units: Row[]): Map<string, Row[]> {
@@ -72,7 +73,7 @@ export function Home() {
               <Link key={u.id} className="card card-pad stack" to={`/e/Unit/${u.id}`}>
                 <strong>{String(u.unit_number)}</strong>
                 <span className="faint">{String(u.unit_type ?? "")}</span>
-                <Badge tone={TONE[String(u.status)] ?? "amber"}>{String(u.status)}</Badge>
+                <Badge tone={UNIT_TONE[String(u.status)] ?? "amber"}>{String(u.status)}</Badge>
               </Link>
             ))}
           </div>

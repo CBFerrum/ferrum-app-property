@@ -39,3 +39,21 @@ describe("the portal's home", () => {
     expect(l.map((x) => x.unit)).toEqual(["u1"]);
   });
 });
+
+describe("the owners' page", () => {
+  it("names a period's month, and leaves anything else as it came", async () => {
+    const { monthName } = await import("./Portal");
+    expect(monthName("2026-08", "en-GB")).toBe("August 2026");
+    expect(monthName("2026-01", "en-GB")).toBe("January 2026");
+    expect(monthName("2026-13", "en-GB")).toBe("2026-13");
+    expect(monthName("soon")).toBe("soon");
+  });
+
+  it("writes amounts as numbers, keeping their decimals", async () => {
+    const { amount } = await import("./Portal");
+    expect(amount("20900", "en-GB")).toBe("20,900");
+    expect(amount("44505.49", "en-GB")).toBe("44,505.49");
+    expect(amount("0.125", "en-GB")).toBe("0.125");
+    expect([amount(null), amount(""), amount("n/a")]).toEqual(["", "", "n/a"]);
+  });
+});

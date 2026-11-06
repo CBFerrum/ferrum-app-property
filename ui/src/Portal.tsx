@@ -1,13 +1,15 @@
-// Property's page of the workspace's portal (Ferrum docs/plan/apps-ui.md §9.1) at /portal/home/: a
+// Property's pages of the workspace's portal (Ferrum docs/plan/apps-ui.md §9.1). At /portal/home/: a
 // lessee's leases with the rent invoiced (each invoice opens on ERP's "Your invoices"), the repairs
-// they asked for, and a new request for a unit they rent now. Everything comes from
-// /api/app/property/portal/…, which answers by the address the person signed in with.
+// they asked for, and a new request for a unit they rent now. At /portal/owner/: an owner's
+// buildings, with their units and leases, the rent invoiced and still owed, and repairs. Everything
+// comes from /api/app/property/portal/…, which answers by the address the person signed in with.
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { api, errorMessage } from "@ferrum/client";
 import { Badge, Button, EmptyState, ErrorState, Field, PageLoading, statusTone, toast, useShellTitle } from "@ferrum/kit";
+import { UNIT_TONE } from "./Home";
 
 const BASE = "/api/app/property/portal";
 
@@ -175,5 +177,164 @@ export function PortalNewRequest() {
         <Link to="/">Back</Link>
       </div>
     </form>
+  );
+}
+
+export interface OwnerUnit {
+  id: string;
+  unit_number?: string | null;
+  unit_type?: string | null;
+  area?: string | null;
+  status?: string | null;
+  lease?: {
+    number?: string | null;
+    lessee?: string | null;
+    starts_on?: string | null;
+    ends_on?: string | null;
+    leaving_on?: string | null;
+    rent?: string | null;
+    frequency?: string | null;
+  } | null;
+}
+
+export interface OwnerProperty {
+  id: string;
+  name?: string | null;
+  address?: string | null;
+  units: OwnerUnit[];
+  rent: { month: string; invoiced: string; owed: string }[];
+  repairs: { number?: string | null; unit_number?: string | null; summary?: string | null; priority?: string | null; status?: string | null; done_on?: string | null }[];
+}
+
+/** "2026-08" as its month and year, written where the browser is. */
+export function monthName(month: string, locale?: string): string {
+  const [y, m] = month.split("-").map(Number);
+  if (!y || !m || m > 12) return month;
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString(locale, { month: "long", year: "numeric", timeZone: "UTC" });
+}
+
+/** An amount as the browser writes numbers; anything else as it came. */
+export function amount(v?: string | null, locale?: string): string {
+  const n = v == null || v === "" ? Number.NaN : Number(v);
+  return Number.isFinite(n) ? n.toLocaleString(locale, { maximumFractionDigits: 6 }) : (v ?? "");
+}
+
+/** A lease's last day: the day its notice runs out, when notice was given, else its end. */
+const until = (l: NonNullable<OwnerUnit["lease"]>) => (l.leaving_on ? `${l.leaving_on}, on notice` : (l.ends_on ?? ""));
+
+export function PortalOwner() {
+  useShellTitle("Properties you own");
+  const q = useQuery({
+    queryKey: ["property", "portal", "owner"],
+    queryFn: ({ signal }) => api.get<{ properties: OwnerProperty[] }>(`${BASE}/owner`, {}, signal),
+  });
+  if (q.error) return <ErrorState error={q.error} onRetry={() => void q.refetch()} />;
+  if (!q.data) return <PageLoading />;
+  const { properties } = q.data;
+  return (
+    <div className="stack np-page">
+      <div className="page-head">
+        <div>
+          <h1 className="page-title">Properties you own</h1>
+          <p className="page-sub">Their units and leases, the rent invoiced and still owed, and repairs.</p>
+        </div>
+      </div>
+      {!properties.length ? (
+        <EmptyState title="No property here names you as its owner" icon="building-2">
+          <p className="muted">When the managers name you as a property's owner, it is here.</p>
+        </EmptyState>
+      ) : (
+        properties.map((p) => <Owned key={p.id} p={p} />)
+      )}
+    </div>
+  );
+}
+
+function Owned({ p }: { p: OwnerProperty }) {
+  const let_ = p.units.filter((u) => u.status === "Let").length;
+  return (
+    <section className="card card-pad stack" aria-label={p.name ?? "Property"}>
+      <header>
+        <h2>{p.name}</h2>
+        <p className="faint">{[p.address, `${let_} of ${p.units.length} units let`].filter(Boolean).join(" · ")}</p>
+      </header>
+      <div className="table-wrap">
+        <table className="table">
+          <caption className="sr-only">The units of {p.name}</caption>
+          <thead>
+            <tr>
+              <th scope="col">Unit</th>
+              <th scope="col">Status</th>
+              <th scope="col">Let to</th>
+              <th scope="col">Until</th>
+              <th scope="col" className="num">
+                Rent
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {p.units.map((u) => (
+              <tr key={u.id}>
+                <td>
+                  {u.unit_number}
+                  {u.unit_type && <span className="faint"> · {u.unit_type}</span>}
+                </td>
+                <td>
+                  <Badge tone={UNIT_TONE[u.status ?? ""] ?? "amber"}>{u.status}</Badge>
+                </td>
+                <td>{u.lease?.lessee ?? ""}</td>
+                <td>{u.lease ? until(u.lease) : ""}</td>
+                <td className="num">{u.lease ? `${amount(u.lease.rent)} ${String(u.lease.frequency ?? "").toLowerCase()}` : ""}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {p.rent.length > 0 && (
+        <>
+          <h3>Rent</h3>
+          <p className="faint">Issued invoices, rent, charges and late fees, by the month their period starts.</p>
+          <div className="table-wrap">
+            <table className="table">
+              <caption className="sr-only">The rent of {p.name} by month</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Month</th>
+                  <th scope="col" className="num">
+                    Invoiced
+                  </th>
+                  <th scope="col" className="num">
+                    Still owed
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {p.rent.map((m) => (
+                  <tr key={m.month}>
+                    <td>{monthName(m.month)}</td>
+                    <td className="num">{amount(m.invoiced)}</td>
+                    <td className="num">{amount(m.owed)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+      {p.repairs.length > 0 && (
+        <>
+          <h3>Repairs</h3>
+          <ul className="stack">
+            {p.repairs.map((r, i) => (
+              <li key={r.number ?? i}>
+                {r.number} · {r.unit_number} · {r.summary} · <Badge tone={statusTone(r.status)}>{r.status}</Badge>
+                {r.priority === "Urgent" ? " · urgent" : ""}
+                {r.done_on ? ` · done ${r.done_on}` : ""}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
   );
 }
