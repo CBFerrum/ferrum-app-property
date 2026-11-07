@@ -51,6 +51,7 @@
   "{number} · {period_from} to {period_to}": "{number} · من {period_from} إلى {period_to}",
   "{number} · {starts_on} to": "{number} · من {starts_on} إلى",
   "{period_from} to {period_to}": "من {period_from} إلى {period_to}",
+  "{still_to_pay} to pay": "{still_to_pay} مستحقة الدفع",
   "· ends": "· ينتهي",
   "· not issued yet": "· لم يصدر بعد",
   "· urgent": "· عاجل"

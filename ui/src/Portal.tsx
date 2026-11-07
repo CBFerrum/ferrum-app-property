@@ -225,7 +225,7 @@ export interface OwnerStatement {
 /** Where a statement's payout stands: waiting for accounts, paid, or what is still to pay. */
 export function payoutState(s: OwnerStatement): string {
   if (s.still_to_pay === null || s.still_to_pay === undefined) return "Waiting for accounts";
-  return Number(s.still_to_pay) <= 0 ? "Paid" : `${s.still_to_pay} to pay`;
+  return Number(s.still_to_pay) <= 0 ? "Paid" : t("{still_to_pay} to pay", { still_to_pay: s.still_to_pay });
 }
 
 export function monthName(month: string, locale?: string): string {
