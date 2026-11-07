@@ -3,7 +3,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
-import { api, docPath, todayIso, t } from "@ferrum/client";
+import { api, docPath, todayIso, t, isolate } from "@ferrum/client";
 import { Badge, ErrorState, PageLoading, useShellTitle } from "@ferrum/kit";
 
 interface Row {
@@ -41,7 +41,7 @@ export function endingSoon(leases: Row[], today: string, days = 60): Row[] {
 }
 
 export function Home() {
-  useShellTitle("Property");
+  useShellTitle(t("Property"));
   const q = useQuery({
     queryKey: ["property", "home"],
     queryFn: async () => {
@@ -67,13 +67,13 @@ export function Home() {
       </header>
       {q.data.buildings.map((b) => (
         <section key={b.id} className="card card-pad stack" aria-label={String(b.building_name)}>
-          <h3>{String(b.building_name)}</h3>
+          <h3>{isolate(String(b.building_name))}</h3>
           <div className="np-columns">
             {(grouped.get(b.id) ?? []).map((u) => (
               <Link key={u.id} className="card card-pad stack" to={`/e/Unit/${u.id}`}>
-                <strong>{String(u.unit_number)}</strong>
-                <span className="faint">{String(u.unit_type ?? "")}</span>
-                <Badge tone={UNIT_TONE[String(u.status)] ?? "amber"}>{String(u.status)}</Badge>
+                <strong>{isolate(String(u.unit_number))}</strong>
+                <span className="faint">{isolate(String(u.unit_type ?? ""))}</span>
+                <Badge tone={UNIT_TONE[String(u.status)] ?? "amber"}>{isolate(String(u.status))}</Badge>
               </Link>
             ))}
           </div>
@@ -86,8 +86,8 @@ export function Home() {
             {ending.map((l) => (
               <li key={l.id}>
                 <Link to={`/e/Lease/${l.id}`}>
-                  {String(l.number ?? "")} {t("· ends")} {lastDay(l)}
-                  {l.leaving_on ? ` on notice from the ${String(l.notice_by ?? "").toLowerCase()}` : ""}
+                  {isolate(String(l.number ?? ""))} {t("· ends")} {isolate(lastDay(l))}
+                  {l.leaving_on ? t(" on notice from the {value}", { value: String(l.notice_by ?? "").toLowerCase() }) : ""}
                 </Link>
               </li>
             ))}
@@ -99,7 +99,7 @@ export function Home() {
             {open.map((r) => (
               <li key={r.id}>
                 <Link to={`/e/RepairRequest/${r.id}`}>
-                  {String(r.number ?? "")} · {String(r.summary)} {r.priority === "Urgent" ? "· urgent" : ""}
+                  {isolate(String(r.number ?? ""))} · {isolate(String(r.summary))} {r.priority === "Urgent" ? t("· urgent") : ""}
                 </Link>
               </li>
             ))}
