@@ -1,6 +1,6 @@
 id: property
 name: Property
-version: 0.7.9
+version: 0.7.10
 publisher: cbferrum
 summary: "Buildings and units, leases invoiced each period through ERP, rent reviews, notice, late fees and deposits through the books, repairs and inspections, and portal pages for lessees and owners"
 description: README.md
@@ -36,3 +36,18 @@ contributes:
   shell.portal:
     - {id: home, title: Your home, description: "Your lease, the rent invoiced and repairs you asked for"}
     - {id: owner, title: Properties you own, description: "For owners: units, leases, the rent invoiced and still owed, and repairs"}
+  # What the assistant should know in Property's pages, and what it suggests asking there.
+  shell.assistant:
+    - id: property
+      title: "Property"
+      instructions: >-
+        A Unit in a Building is Vacant, Let or Under Maintenance. A Lease (Draft, Active, Ended, Terminated) is
+        invoiced each period through ERP, with its rent reviews, notice and deposit; what a lessee owes is the
+        outstanding amount of their invoices. Service charges are budgeted and reconciled for each building. Repairs
+        (RepairRequest: Open, In Progress, Done) and inspections keep the upkeep, and an OwnerStatement reports to an
+        owner.
+      suggestions:
+        - "Which units are vacant?"
+        - "Which leases end in the next three months?"
+        - "Who is behind on rent?"
+        - "Which repairs are still open?"
