@@ -51,6 +51,7 @@
   "{number} · {period_from} to {period_to}": "{number} · {period_from} से {period_to}",
   "{number} · {starts_on} to": "{number} · {starts_on} से",
   "{period_from} to {period_to}": "{period_from} से {period_to}",
+  "{still_to_pay} to pay": "{still_to_pay} भुगतान करना है",
   "· ends": "· समाप्त",
   "· not issued yet": "· अभी जारी नहीं",
   "· urgent": "· ज़रूरी"
