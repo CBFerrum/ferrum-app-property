@@ -8,7 +8,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { api, errorMessage } from "@ferrum/client";
+import { api, errorMessage, t } from "@ferrum/client";
 import { Badge, Button, EmptyState, ErrorState, Field, PageLoading, statusTone, toast, useShellTitle } from "@ferrum/kit";
 import { UNIT_TONE } from "./Home";
 
@@ -62,18 +62,18 @@ export function PortalHome() {
     <div className="stack np-page">
       <div className="page-head">
         <div>
-          <h1 className="page-title">Your home</h1>
-          <p className="page-sub">Your lease, the rent invoiced, and the repairs you asked for.</p>
+          <h1 className="page-title">{t("Your home")}</h1>
+          <p className="page-sub">{t("Your lease, the rent invoiced, and the repairs you asked for.")}</p>
         </div>
         {rentedNow(leases).length > 0 && (
           <Link className="btn btn-primary btn-md" to="/new">
-            Ask for a repair
+            {t("Ask for a repair")}
           </Link>
         )}
       </div>
       {!leases.length ? (
-        <EmptyState title="No lease here yet" icon="building-2">
-          <p className="muted">When a lease is made out to you, it is here with its rent.</p>
+        <EmptyState title={t("No lease here yet")} icon="building-2">
+          <p className="muted">{t("When a lease is made out to you, it is here with its rent.")}</p>
         </EmptyState>
       ) : (
         leases.map((l) => (
@@ -93,7 +93,7 @@ export function PortalHome() {
                   <li key={`${i.period_from}`}>
                     {i.invoice ? <a href={`/portal/invoices/${i.invoice}`}>{`${i.period_from} to ${i.period_to}`}</a> : `${i.period_from} to ${i.period_to}`} ·{" "}
                     {i.amount}
-                    {!i.issued && <span className="muted"> · not issued yet</span>}
+                    {!i.issued && <span className="muted"> {t("· not issued yet")}</span>}
                   </li>
                 ))}
               </ul>
@@ -102,8 +102,8 @@ export function PortalHome() {
         ))
       )}
       {requests.length > 0 && (
-        <section className="card card-pad stack" aria-label="Your repairs">
-          <h3>Repairs you asked for</h3>
+        <section className="card card-pad stack" aria-label={t("Your repairs")}>
+          <h3>{t("Repairs you asked for")}</h3>
           <ul className="stack">
             {requests.map((r) => (
               <li key={r.id}>
@@ -138,7 +138,7 @@ export function PortalNewRequest() {
     try {
       await api.post(`${BASE}/requests`, { unit: chosen, summary: summary.trim(), details: details.trim(), priority });
       await qc.invalidateQueries({ queryKey: ["property", "portal", "home"] });
-      toast("Your request is with the team", "success");
+      toast(t("Your request is with the team"), "success");
       navigate("/");
     } catch (err) {
       toast(errorMessage(err), "error");
@@ -148,8 +148,8 @@ export function PortalNewRequest() {
   };
   return (
     <form className="card card-pad stack np-page" onSubmit={(e) => void submit(e)}>
-      <h1 className="page-title">Ask for a repair</h1>
-      <Field label="Where">
+      <h1 className="page-title">{t("Ask for a repair")}</h1>
+      <Field label={t("Where")}>
         <select className="input" value={chosen} onChange={(e) => setUnit(e.target.value)}>
           {units.map((l) => (
             <option key={l.id} value={l.unit ?? ""}>
@@ -158,24 +158,24 @@ export function PortalNewRequest() {
           ))}
         </select>
       </Field>
-      <Field label="What needs fixing">
+      <Field label={t("What needs fixing")}>
         <input className="input" value={summary} maxLength={200} required onChange={(e) => setSummary(e.target.value)} />
       </Field>
-      <Field label="Details">
+      <Field label={t("Details")}>
         <textarea className="input" value={details} rows={4} onChange={(e) => setDetails(e.target.value)} />
       </Field>
-      <Field label="How soon">
+      <Field label={t("How soon")}>
         <select className="input" value={priority} onChange={(e) => setPriority(e.target.value)}>
-          <option value="Low">When convenient</option>
-          <option value="Normal">Soon</option>
-          <option value="Urgent">Urgent: the home is not safe or usable</option>
+          <option value="Low">{t("When convenient")}</option>
+          <option value="Normal">{t("Soon")}</option>
+          <option value="Urgent">{t("Urgent: the home is not safe or usable")}</option>
         </select>
       </Field>
       <div className="row">
         <Button type="submit" variant="primary" loading={busy} disabled={!chosen || !summary.trim()}>
-          Send
+          {t("Send")}
         </Button>
-        <Link to="/">Back</Link>
+        <Link to="/">{t("Back")}</Link>
       </div>
     </form>
   );
@@ -256,13 +256,13 @@ export function PortalOwner() {
     <div className="stack np-page">
       <div className="page-head">
         <div>
-          <h1 className="page-title">Properties you own</h1>
-          <p className="page-sub">Their units and leases, the rent invoiced and still owed, and repairs.</p>
+          <h1 className="page-title">{t("Properties you own")}</h1>
+          <p className="page-sub">{t("Their units and leases, the rent invoiced and still owed, and repairs.")}</p>
         </div>
       </div>
       {!properties.length ? (
-        <EmptyState title="No property here names you as its owner" icon="building-2">
-          <p className="muted">When the managers name you as a property's owner, it is here.</p>
+        <EmptyState title={t("No property here names you as its owner")} icon="building-2">
+          <p className="muted">{t("When the managers name you as a property's owner, it is here.")}</p>
         </EmptyState>
       ) : (
         properties.map((p) => <Owned key={p.id} p={p} />)
@@ -281,15 +281,15 @@ function Owned({ p }: { p: OwnerProperty }) {
       </header>
       <div className="table-wrap">
         <table className="table">
-          <caption className="sr-only">The units of {p.name}</caption>
+          <caption className="sr-only">{t("The units of {name}", { name: p.name ?? "" })}</caption>
           <thead>
             <tr>
-              <th scope="col">Unit</th>
-              <th scope="col">Status</th>
-              <th scope="col">Let to</th>
-              <th scope="col">Until</th>
+              <th scope="col">{t("Unit")}</th>
+              <th scope="col">{t("Status")}</th>
+              <th scope="col">{t("Let to")}</th>
+              <th scope="col">{t("Until")}</th>
               <th scope="col" className="num">
-                Rent
+                {t("Rent")}
               </th>
             </tr>
           </thead>
@@ -313,19 +313,19 @@ function Owned({ p }: { p: OwnerProperty }) {
       </div>
       {p.rent.length > 0 && (
         <>
-          <h3>Rent</h3>
-          <p className="faint">Issued invoices, rent, charges and late fees, by the month their period starts.</p>
+          <h3>{t("Rent")}</h3>
+          <p className="faint">{t("Issued invoices, rent, charges and late fees, by the month their period starts.")}</p>
           <div className="table-wrap">
             <table className="table">
-              <caption className="sr-only">The rent of {p.name} by month</caption>
+              <caption className="sr-only">{t("The rent of {name} by month", { name: p.name ?? "" })}</caption>
               <thead>
                 <tr>
-                  <th scope="col">Month</th>
+                  <th scope="col">{t("Month")}</th>
                   <th scope="col" className="num">
-                    Invoiced
+                    {t("Invoiced")}
                   </th>
                   <th scope="col" className="num">
-                    Still owed
+                    {t("Still owed")}
                   </th>
                 </tr>
               </thead>
@@ -344,27 +344,27 @@ function Owned({ p }: { p: OwnerProperty }) {
       )}
       {(p.statements ?? []).length > 0 && (
         <>
-          <h3>Statements</h3>
-          <p className="faint">What was collected for the days, less the management fee and the expenses charged to you, and your share.</p>
+          <h3>{t("Statements")}</h3>
+          <p className="faint">{t("What was collected for the days, less the management fee and the expenses charged to you, and your share.")}</p>
           <div className="table-wrap">
             <table className="table">
-              <caption className="sr-only">The statements of {p.name}</caption>
+              <caption className="sr-only">{t("The statements of {name}", { name: p.name ?? "" })}</caption>
               <thead>
                 <tr>
-                  <th scope="col">Days</th>
+                  <th scope="col">{t("Days")}</th>
                   <th scope="col" className="num">
-                    Collected
+                    {t("Collected")}
                   </th>
                   <th scope="col" className="num">
-                    Fee
+                    {t("Fee")}
                   </th>
                   <th scope="col" className="num">
-                    Expenses
+                    {t("Expenses")}
                   </th>
                   <th scope="col" className="num">
-                    Your share
+                    {t("Your share")}
                   </th>
-                  <th scope="col">Payout</th>
+                  <th scope="col">{t("Payout")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -390,7 +390,7 @@ function Owned({ p }: { p: OwnerProperty }) {
       )}
       {p.repairs.length > 0 && (
         <>
-          <h3>Repairs</h3>
+          <h3>{t("Repairs")}</h3>
           <ul className="stack">
             {p.repairs.map((r, i) => (
               <li key={r.number ?? i}>

@@ -3,7 +3,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
-import { api, docPath, todayIso } from "@ferrum/client";
+import { api, docPath, todayIso, t } from "@ferrum/client";
 import { Badge, ErrorState, PageLoading, useShellTitle } from "@ferrum/kit";
 
 interface Row {
@@ -62,8 +62,8 @@ export function Home() {
   return (
     <div className="np-page">
       <header className="row" style={{ justifyContent: "space-between" }}>
-        <h2>Units</h2>
-        <Link to="/e/Lease/new">New lease</Link>
+        <h2>{t("Units")}</h2>
+        <Link to="/e/Lease/new">{t("New lease")}</Link>
       </header>
       {q.data.buildings.map((b) => (
         <section key={b.id} className="card card-pad stack" aria-label={String(b.building_name)}>
@@ -80,21 +80,21 @@ export function Home() {
         </section>
       ))}
       <div className="np-columns">
-        <section className="card card-pad stack" aria-label="Leases ending soon">
-          <h3>Ending in 60 days ({ending.length})</h3>
+        <section className="card card-pad stack" aria-label={t("Leases ending soon")}>
+          <h3>{t("Ending in 60 days ({length})", { length: ending.length })}</h3>
           <ul className="stack">
             {ending.map((l) => (
               <li key={l.id}>
                 <Link to={`/e/Lease/${l.id}`}>
-                  {String(l.number ?? "")} · ends {lastDay(l)}
+                  {String(l.number ?? "")} {t("· ends")} {lastDay(l)}
                   {l.leaving_on ? ` on notice from the ${String(l.notice_by ?? "").toLowerCase()}` : ""}
                 </Link>
               </li>
             ))}
           </ul>
         </section>
-        <section className="card card-pad stack" aria-label="Open requests">
-          <h3>Open requests ({open.length})</h3>
+        <section className="card card-pad stack" aria-label={t("Open requests")}>
+          <h3>{t("Open requests ({length})", { length: open.length })}</h3>
           <ul className="stack">
             {open.map((r) => (
               <li key={r.id}>
