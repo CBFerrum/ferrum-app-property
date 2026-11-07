@@ -8,7 +8,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { api, errorMessage, t } from "@ferrum/client";
+import { api, errorMessage, t, isolate } from "@ferrum/client";
 import { Badge, Button, EmptyState, ErrorState, Field, PageLoading, statusTone, toast, useShellTitle } from "@ferrum/kit";
 import { UNIT_TONE } from "./Home";
 
@@ -53,7 +53,7 @@ export function rentedNow(leases: PortalLease[]): PortalLease[] {
 const useHome = () => useQuery({ queryKey: ["property", "portal", "home"], queryFn: ({ signal }) => api.get<Home>(`${BASE}/home`, {}, signal) });
 
 export function PortalHome() {
-  useShellTitle("Your home");
+  useShellTitle(t("Your home"));
   const q = useHome();
   if (q.error) return <ErrorState error={q.error} onRetry={() => void q.refetch()} />;
   if (!q.data) return <PageLoading />;
@@ -77,22 +77,22 @@ export function PortalHome() {
         </EmptyState>
       ) : (
         leases.map((l) => (
-          <section key={l.id} className="card card-pad stack" aria-label={`Lease ${l.number ?? ""}`}>
+          <section key={l.id} className="card card-pad stack" aria-label={t("Lease {value}", { value: l.number ?? "" })}>
             <header className="row" style={{ justifyContent: "space-between" }}>
               <h3>
-                {l.building} · {l.unit_number}
+                {isolate(l.building ?? "")} · {isolate(l.unit_number ?? "")}
               </h3>
-              <Badge tone={statusTone(l.status)}>{l.status}</Badge>
+              <Badge tone={statusTone(l.status)}>{isolate(l.status ?? "")}</Badge>
             </header>
             <p className="faint">
-              {l.number} · {l.starts_on} to {l.terminated_on ?? l.ends_on} · {l.rent} {String(l.frequency ?? "").toLowerCase()}
+              {t("{number} · {starts_on} to", { number: l.number ?? "", starts_on: l.starts_on ?? "" })} {l.terminated_on ?? l.ends_on} · {isolate(l.rent ?? "")} {isolate(String(l.frequency ?? "").toLowerCase())}
             </p>
             {l.invoices.length > 0 && (
               <ul className="stack">
                 {l.invoices.map((i) => (
                   <li key={`${i.period_from}`}>
-                    {i.invoice ? <a href={`/portal/invoices/${i.invoice}`}>{`${i.period_from} to ${i.period_to}`}</a> : `${i.period_from} to ${i.period_to}`} ·{" "}
-                    {i.amount}
+                    {i.invoice ? <a href={`/portal/invoices/${i.invoice}`}>{t("{period_from} to {period_to}", { period_from: String(i.period_from), period_to: String(i.period_to) })}</a> : t("{period_from} to {period_to}", { period_from: String(i.period_from), period_to: String(i.period_to) })} ·{isolate(" ")}
+                    {isolate(i.amount ?? "")}
                     {!i.issued && <span className="muted"> {t("· not issued yet")}</span>}
                   </li>
                 ))}
@@ -107,8 +107,8 @@ export function PortalHome() {
           <ul className="stack">
             {requests.map((r) => (
               <li key={r.id}>
-                {r.number} · {r.summary} · <Badge tone={statusTone(r.status)}>{r.status}</Badge>
-                {r.done_on ? ` · done ${r.done_on}` : ""}
+                {isolate(r.number ?? "")} · {isolate(r.summary ?? "")} · <Badge tone={statusTone(r.status)}>{isolate(r.status ?? "")}</Badge>
+                {r.done_on ? t(" · done {done_on}", { done_on: r.done_on }) : ""}
               </li>
             ))}
           </ul>
@@ -119,7 +119,7 @@ export function PortalHome() {
 }
 
 export function PortalNewRequest() {
-  useShellTitle("Ask for a repair");
+  useShellTitle(t("Ask for a repair"));
   const navigate = useNavigate();
   const qc = useQueryClient();
   const q = useHome();
@@ -153,7 +153,7 @@ export function PortalNewRequest() {
         <select className="input" value={chosen} onChange={(e) => setUnit(e.target.value)}>
           {units.map((l) => (
             <option key={l.id} value={l.unit ?? ""}>
-              {l.building} · {l.unit_number}
+              {isolate(l.building ?? "")} · {isolate(l.unit_number ?? "")}
             </option>
           ))}
         </select>
@@ -241,10 +241,10 @@ export function amount(v?: string | null, locale?: string): string {
 }
 
 /** A lease's last day: the day its notice runs out, when notice was given, else its end. */
-const until = (l: NonNullable<OwnerUnit["lease"]>) => (l.leaving_on ? `${l.leaving_on}, on notice` : (l.ends_on ?? ""));
+const until = (l: NonNullable<OwnerUnit["lease"]>) => (l.leaving_on ? t("{leaving_on}, on notice", { leaving_on: l.leaving_on }) : (l.ends_on ?? ""));
 
 export function PortalOwner() {
-  useShellTitle("Properties you own");
+  useShellTitle(t("Properties you own"));
   const q = useQuery({
     queryKey: ["property", "portal", "owner"],
     queryFn: ({ signal }) => api.get<{ properties: OwnerProperty[] }>(`${BASE}/owner`, {}, signal),
@@ -274,10 +274,10 @@ export function PortalOwner() {
 function Owned({ p }: { p: OwnerProperty }) {
   const let_ = p.units.filter((u) => u.status === "Let").length;
   return (
-    <section className="card card-pad stack" aria-label={p.name ?? "Property"}>
+    <section className="card card-pad stack" aria-label={p.name ?? t("Property")}>
       <header>
-        <h2>{p.name}</h2>
-        <p className="faint">{[p.address, `${let_} of ${p.units.length} units let`].filter(Boolean).join(" · ")}</p>
+        <h2>{isolate(p.name ?? "")}</h2>
+        <p className="faint">{isolate([p.address, `${let_} of ${p.units.length} units let`].filter(Boolean).join(" · "))}</p>
       </header>
       <div className="table-wrap">
         <table className="table">
@@ -297,11 +297,11 @@ function Owned({ p }: { p: OwnerProperty }) {
             {p.units.map((u) => (
               <tr key={u.id}>
                 <td>
-                  {u.unit_number}
-                  {u.unit_type && <span className="faint"> · {u.unit_type}</span>}
+                  {isolate(u.unit_number ?? "")}
+                  {u.unit_type && <span className="faint"> · {isolate(u.unit_type)}</span>}
                 </td>
                 <td>
-                  <Badge tone={UNIT_TONE[u.status ?? ""] ?? "amber"}>{u.status}</Badge>
+                  <Badge tone={UNIT_TONE[u.status ?? ""] ?? "amber"}>{isolate(u.status ?? "")}</Badge>
                 </td>
                 <td>{u.lease?.lessee ?? ""}</td>
                 <td>{u.lease ? until(u.lease) : ""}</td>
@@ -332,9 +332,9 @@ function Owned({ p }: { p: OwnerProperty }) {
               <tbody>
                 {p.rent.map((m) => (
                   <tr key={m.month}>
-                    <td>{monthName(m.month)}</td>
-                    <td className="num">{amount(m.invoiced)}</td>
-                    <td className="num">{amount(m.owed)}</td>
+                    <td>{isolate(monthName(m.month))}</td>
+                    <td className="num">{isolate(amount(m.invoiced))}</td>
+                    <td className="num">{isolate(amount(m.owed))}</td>
                   </tr>
                 ))}
               </tbody>
@@ -371,16 +371,16 @@ function Owned({ p }: { p: OwnerProperty }) {
                 {(p.statements ?? []).map((s) => (
                   <tr key={s.number}>
                     <td>
-                      {s.number} · {s.period_from} to {s.period_to}
+                      {t("{number} · {period_from} to {period_to}", { number: s.number, period_from: s.period_from, period_to: s.period_to })}
                     </td>
-                    <td className="num">{amount(s.collected)}</td>
+                    <td className="num">{isolate(amount(s.collected))}</td>
                     <td className="num">
-                      {amount(s.management_fee)}
+                      {isolate(amount(s.management_fee))}
                       {s.fee_percent ? ` (${s.fee_percent}%)` : ""}
                     </td>
-                    <td className="num">{amount(s.expenses)}</td>
-                    <td className="num">{amount(s.payout)}</td>
-                    <td>{payoutState(s)}</td>
+                    <td className="num">{isolate(amount(s.expenses))}</td>
+                    <td className="num">{isolate(amount(s.payout))}</td>
+                    <td>{isolate(payoutState(s))}</td>
                   </tr>
                 ))}
               </tbody>
@@ -394,9 +394,9 @@ function Owned({ p }: { p: OwnerProperty }) {
           <ul className="stack">
             {p.repairs.map((r, i) => (
               <li key={r.number ?? i}>
-                {r.number} · {r.unit_number} · {r.summary} · <Badge tone={statusTone(r.status)}>{r.status}</Badge>
-                {r.priority === "Urgent" ? " · urgent" : ""}
-                {r.done_on ? ` · done ${r.done_on}` : ""}
+                {isolate(r.number ?? "")} · {isolate(r.unit_number ?? "")} · {isolate(r.summary ?? "")} · <Badge tone={statusTone(r.status)}>{isolate(r.status ?? "")}</Badge>
+                {r.priority === "Urgent" ? t(" · urgent") : ""}
+                {r.done_on ? t(" · done {done_on}", { done_on: r.done_on }) : ""}
               </li>
             ))}
           </ul>
