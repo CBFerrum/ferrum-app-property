@@ -23,7 +23,7 @@ function RouteError() {
   return <ErrorState error={useRouteError()} onRetry={() => window.location.reload()} />;
 }
 
-function NotFound({ back = "Go to the units" }: { back?: string }) {
+function NotFound({ back = t("Go to the units") }: { back?: string }) {
   return (
     <EmptyState title={t("Page not found")}>
       <Link to="/">{isolate(back)}</Link>
@@ -57,7 +57,7 @@ const portalRoutes = [
     children: [
       { index: true, lazy: () => import("./Portal").then((m) => ({ Component: m.PortalHome })) },
       { path: "new", lazy: () => import("./Portal").then((m) => ({ Component: m.PortalNewRequest })) },
-      { path: "*", element: <NotFound back="Go to your home" /> },
+      { path: "*", get element() { return <NotFound back={t("Go to your home")} />; } },
     ],
   },
 ];
@@ -74,7 +74,7 @@ const ownerRoutes = [
     errorElement: <RouteError />,
     children: [
       { index: true, lazy: () => import("./Portal").then((m) => ({ Component: m.PortalOwner })) },
-      { path: "*", element: <NotFound back="Go to your properties" /> },
+      { path: "*", get element() { return <NotFound back={t("Go to your properties")} />; } },
     ],
   },
 ];

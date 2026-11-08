@@ -224,7 +224,7 @@ export interface OwnerStatement {
 
 /** Where a statement's payout stands: waiting for accounts, paid, or what is still to pay. */
 export function payoutState(s: OwnerStatement): string {
-  if (s.still_to_pay === null || s.still_to_pay === undefined) return "Waiting for accounts";
+  if (s.still_to_pay === null || s.still_to_pay === undefined) return t("Waiting for accounts");
   return Number(s.still_to_pay) <= 0 ? "Paid" : t("{still_to_pay} to pay", { still_to_pay: s.still_to_pay });
 }
 
@@ -277,7 +277,7 @@ function Owned({ p }: { p: OwnerProperty }) {
     <section className="card card-pad stack" aria-label={p.name ?? t("Property")}>
       <header>
         <h2>{isolate(p.name ?? "")}</h2>
-        <p className="faint">{isolate([p.address, `${let_} of ${p.units.length} units let`].filter(Boolean).join(" · "))}</p>
+        <p className="faint">{isolate([p.address, t("{let_} of {length} units let", { let_, length: p.units.length })].filter(Boolean).join(" · "))}</p>
       </header>
       <div className="table-wrap">
         <table className="table">
