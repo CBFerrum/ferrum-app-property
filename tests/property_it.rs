@@ -15,6 +15,7 @@ use ferrum_kernel::tenant::NewTenant;
 use ferrum_kernel::{Ctx, Db, DbConfig, Doc, Error, Filter, HookRegistry, Kernel, KernelSettings, ListQuery};
 use ferrum_meta::Catalog;
 use serde_json::{Value, json};
+use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -122,6 +123,9 @@ async fn scenario() {
     ferrum_domain::register(&mut hooks);
     ferrum_app_erp::register(&mut hooks);
     ferrum_app_property::register(&mut hooks);
+    for source in ferrum_app_property::reports() {
+        ferrum_domain::reports::add_source(source);
+    }
     let settings = KernelSettings { secret_key: Some(SecretKey::new([7u8; 32])), ..Default::default() };
     let k = Kernel::boot(db, catalog, hooks, settings, None).await.expect("boot");
     ferrum_domain::maintenance(&k).await.expect("partitions");
@@ -564,13 +568,49 @@ async fn scenario() {
     // The boiler's repair cost 800, charged to the owner; the company keeps 10% for managing.
     t.k.update(&manager, "RepairRequest", boiler, obj(json!({"cost": "800"})), None).await.expect("its cost");
     t.k.update(&manager, "Building", tower, obj(json!({"management_fee_percent": "10"})), None).await.unwrap();
+    // The building's costs in the books: bills whose lines carry its cost center, once submitted.
+    let tower_cc = uid(&t.insert(&a, "CostCenter", json!({"cost_center_name": "Harbour View", "company": company.to_string()})).await["id"]);
+    t.k.update(&manager, "Building", tower, obj(json!({"cost_center": tower_cc.to_string()})), None).await.expect("its owner's costs");
+    let upkeep = uid(&t.insert(&a, "Item", item("UPKEEP")).await["id"]);
+    let spark = uid(&t.insert(&a, "Supplier", json!({"supplier_name": "Spark Electric"})).await["id"]);
+    let plumber = uid(&t.insert(&a, "Supplier", json!({"supplier_name": "Pip Plumbing"})).await["id"]);
+    let bill_of = |who: Uuid, on: &str, lines: Value| json!({"company": company.to_string(), "supplier": who.to_string(), "posting_date": on, "bill_no": format!("B-{on}"), "items": lines});
+    let line = |rate: &str, cc: Option<Uuid>| json!({"item": upkeep.to_string(), "qty": "1", "price_list_rate": rate, "discount_percent": "0", "cost_center": cc.map(|c| c.to_string())});
+    // Lights in the hall (600) are the building's; the office's lamp (400) is not.
+    let lights = uid(&t.insert(&a, "PurchaseInvoice", bill_of(spark, "2026-03-10", json!([line("600", Some(tower_cc)), line("400", None)]))).await["id"]);
+    t.k.submit(&a, "PurchaseInvoice", lights, None).await.expect("approved");
+    // A bill still a draft is not charged.
+    t.insert(&a, "PurchaseInvoice", bill_of(spark, "2026-03-11", json!([line("70", Some(tower_cc))]))).await;
+    // A repair names its contractor's bill: the owner is charged the bill, not the cost typed.
+    let tap_bill = uid(&t.insert(&a, "PurchaseInvoice", bill_of(plumber, "2026-04-01", json!([line("250", None)]))).await["id"]);
+    t.k.submit(&a, "PurchaseInvoice", tap_bill, None).await.expect("approved");
+    let dripping = uid(&t.insert(&manager, "RepairRequest", json!({"unit": u101.to_string(), "summary": "Leaking tap", "cost": "999"})).await["id"]);
+    t.k.update(&manager, "RepairRequest", dripping, obj(json!({"status": "Done", "purchase_invoice": tap_bill.to_string()})), None)
+        .await
+        .expect("done, with its bill");
+    // A repair naming a bill that is the building's already is charged it once, by those lines.
+    let hall_lights = uid(&t.insert(&manager, "RepairRequest", json!({"unit": u101.to_string(), "summary": "Hall lights out"})).await["id"]);
+    t.k.update(&manager, "RepairRequest", hall_lights, obj(json!({"status": "Done", "purchase_invoice": lights.to_string()})), None)
+        .await
+        .expect("done, with its bill");
     let statement = |from: &str, to: &str| json!({"building": tower.to_string(), "period_from": from, "period_to": to, "expenses": [{"description": "Gutters cleaned", "amount": "500"}]});
     let os = t.insert(&manager, "OwnerStatement", statement("2026-01-01", "2030-12-31")).await;
     assert_eq!(
         (dec(&os["collected"]), dec(&os["management_fee"]), dec(&os["expenses_total"]), dec(&os["payout"])),
-        (12000.0, 1200.0, 1300.0, 9500.0),
-        "Ana's 12000 paid, less 10% and the expenses: {os:?}"
+        (12000.0, 1200.0, 2150.0, 8650.0),
+        "Ana's 12000 paid, less 10% and the expenses (800 + 500 + 600 + 250): {os:?}"
     );
+    let bills: Vec<(String, f64)> = os["expenses"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|l| l["purchase_invoice"].is_string())
+        .map(|l| (l["description"].as_str().unwrap().to_string(), dec(&l["amount"])))
+        .collect();
+    assert_eq!(bills.len(), 2, "{bills:?}");
+    assert!(bills.iter().any(|b| b.0.contains("from Spark Electric") && b.1 == 600.0), "the hall's lights, not the office's lamp: {bills:?}");
+    assert!(bills.iter().any(|b| b.0.contains("from Pip Plumbing for repair") && b.0.contains("unit 101") && b.1 == 250.0), "{bills:?}");
+    assert!(!os["expenses"].as_array().unwrap().iter().any(|l| dec(&l["amount"]) == 999.0), "the tap's bill, not its typed cost");
     let lines: Vec<(String, f64, bool)> = os["expenses"]
         .as_array()
         .unwrap()
@@ -594,17 +634,36 @@ async fn scenario() {
     let bill = t.get("PurchaseInvoice", uid(&billed["purchase_invoice"]["id"])).await;
     assert_eq!(
         (bill["supplier"].as_str(), dec(&bill["grand_total"]), bill["docstatus"].as_i64()),
-        (Some(olu_books.to_string().as_str()), 9500.0, Some(0)),
+        (Some(olu_books.to_string().as_str()), 8650.0, Some(0)),
         "the owner's bill, for accounts to issue"
     );
     refused(t.k.update(&manager, "OwnerStatement", os, obj(json!({"period_to": "2031-12-31"})), None).await, "invalid", "kept as it was billed");
     // Its owner sees it on the portal; once accounts issue the bill, what is still to pay.
     let mine = call(&k, Some(&olu), "GET", "portal/owner", Value::Null).await.unwrap();
     let st = &mine["properties"][0]["statements"][0];
-    assert_eq!((dec(&st["collected"]), dec(&st["payout"]), st["still_to_pay"].is_null()), (12000.0, 9500.0, true), "{st}");
+    assert_eq!((dec(&st["collected"]), dec(&st["payout"]), st["still_to_pay"].is_null()), (12000.0, 8650.0, true), "{st}");
     t.k.submit(&a, "PurchaseInvoice", uid(&bill["id"]), None).await.expect("issued");
     let mine = call(&k, Some(&olu), "GET", "portal/owner", Value::Null).await.unwrap();
-    assert_eq!(dec(&mine["properties"][0]["statements"][0]["still_to_pay"]), 9500.0);
+    assert_eq!(dec(&mine["properties"][0]["statements"][0]["still_to_pay"]), 8650.0);
+    // The owners' reconciliation: what the statements charged from bills against what the books carry
+    // under the building's cost center, and the payouts against the owner's bills.
+    let reconciliation = |who: &Ctx| {
+        let (k, who) = (&t.k, who.clone());
+        async move { ferrum_domain::reports::run(k, &who, "owner_reconciliation", &HashMap::new()).await }
+    };
+    refused(reconciliation(&fixer).await, "forbidden", "");
+    let row = reconciliation(&manager).await.unwrap()["rows"][0].clone();
+    assert_eq!(
+        (row["building"].as_str(), row["statements"].as_i64(), dec(&row["from_bills"]), dec(&row["books_expenses"]), dec(&row["payouts"])),
+        (Some("Harbour View"), Some(1), 600.0, 600.0, 8650.0),
+        "{row}"
+    );
+    assert_eq!((dec(&row["billed_to_company"]), dec(&row["still_to_pay"]), row["reconciles"].as_bool()), (8650.0, 8650.0, Some(true)), "{row}");
+    // A bill for the building approved after its statement was billed is in the books, not charged.
+    let late_bill = uid(&t.insert(&a, "PurchaseInvoice", bill_of(spark, "2026-05-05", json!([line("300", Some(tower_cc))]))).await["id"]);
+    t.k.submit(&a, "PurchaseInvoice", late_bill, None).await.expect("approved late");
+    let row = reconciliation(&manager).await.unwrap()["rows"][0].clone();
+    assert_eq!((dec(&row["from_bills"]), dec(&row["books_expenses"]), row["reconciles"].as_bool()), (600.0, 900.0, Some(false)), "{row}");
 
     // ───────────── days invoiced past an early end, given back ─────────────
     let u105 = uid(&t.insert(&manager, "Unit", unit("105")).await["id"]);
@@ -714,7 +773,7 @@ async fn scenario() {
     refused(
         t.k.update(&manager, "ServiceChargeBudget", budget, obj(json!({"heads": [{"head": "Cleaning", "amount": "1"}]})), None).await,
         "invalid",
-        "keeps its building, year and costs",
+        "keeps its building, year, costs and basis",
     );
     let paying = |u: Uuid, who: Uuid, from: &str, to: &str| {
         let mut v = lease(u, who, from, to, "1000", "Monthly", json!([]));
@@ -792,4 +851,65 @@ async fn scenario() {
     ferrum_app_property::maintenance_on(&k, day("2026-01-05")).await.expect("upkeep");
     let quarter = dec(&t.find_one("RentInvoice", json!({"lease": lq.to_string(), "period_from": "2025-11-01"})).await["amount"]);
     assert_eq!(quarter, 3000.0 + 610.0 + 620.0, "61 days of 2025 at 10 a day, 31 of 2026 at 20");
+
+    // ───────────── service charges shared by weight, spent as the books say ─────────────
+    // A market hall: the shop on the street bears its floor area three times over in 2025, and
+    // every unit the same in 2026. What 2025 cost is read from the bills charged to its shared costs.
+    let hall = uid(&t.insert(&manager, "Building", json!({"building_name": "Market Hall"})).await["id"]);
+    let stall = |n: &str, area: &str, weighting: &str| json!({"unit_number": n, "building": hall.to_string(), "unit_type": "Retail", "area": area, "weighting": weighting});
+    let s1 = uid(&t.insert(&manager, "Unit", stall("S1", "50", "3")).await["id"]);
+    let s2 = uid(&t.insert(&manager, "Unit", stall("S2", "100", "1")).await["id"]);
+    let shared = uid(&t.insert(&a, "CostCenter", json!({"cost_center_name": "Market Hall shared", "company": company.to_string()})).await["id"]);
+    refused(
+        t.k.insert(
+            &manager,
+            "ServiceChargeBudget",
+            obj(json!({"building": hall.to_string(), "year_from": "2024-01-01", "year_to": "2024-12-31", "cost_center": tower_cc.to_string(), "heads": [{"head": "Cleaning", "amount": "1"}]})),
+        )
+        .await,
+        "invalid",
+        "holds Harbour View's owner's costs",
+    );
+    let weighted = json!({"building": hall.to_string(), "year_from": "2025-01-01", "year_to": "2025-12-31", "basis": "Weighted Area", "cost_center": shared.to_string(),
+                          "heads": [{"head": "Cleaning", "amount": "3650"}]});
+    let hall_2025 = uid(&t.insert(&manager, "ServiceChargeBudget", weighted).await["id"]);
+    t.k.run_action(&manager, "ServiceChargeBudget", hall_2025, "activate_budget", Value::Null).await.expect("in use");
+    refused(t.k.update(&manager, "ServiceChargeBudget", hall_2025, obj(json!({"basis": "Equal Shares"})), None).await, "invalid", "costs and basis");
+    refused(t.k.update(&manager, "Building", hall, obj(json!({"cost_center": shared.to_string()})), None).await, "invalid", "holds the shared costs");
+    let equal = json!({"building": hall.to_string(), "year_from": "2026-01-01", "year_to": "2026-12-31", "basis": "Equal Shares", "heads": [{"head": "Cleaning", "amount": "3650"}]});
+    let hall_2026 = uid(&t.insert(&manager, "ServiceChargeBudget", equal).await["id"]);
+    t.k.run_action(&manager, "ServiceChargeBudget", hall_2026, "activate_budget", Value::Null).await.expect("in use");
+    let shop = |u: Uuid, who: Uuid| {
+        let mut v = lease(u, who, "2025-01-01", "2026-12-31", "1000", "Monthly", json!([]));
+        v["pays_service_charge"] = json!(true);
+        v
+    };
+    let (ls1, ls2) = (uid(&t.insert(&manager, "Lease", shop(s1, bo)).await["id"]), uid(&t.insert(&manager, "Lease", shop(s2, cy)).await["id"]));
+    for l in [ls1, ls2] {
+        t.k.run_action(&manager, "Lease", l, "activate", Value::Null).await.unwrap();
+    }
+    ferrum_app_property::maintenance_on(&k, day("2026-01-05")).await.expect("upkeep");
+    // 2025 by weighted area: 150 against 100, so 6 a day and 4 a day of 10; 2026 equal: 5 each.
+    let rent_of = |l: Uuid, from: &'static str| {
+        let t = &t;
+        async move { dec(&t.find_one("RentInvoice", json!({"lease": l.to_string(), "period_from": from})).await["amount"]) }
+    };
+    assert_eq!((rent_of(ls1, "2025-01-01").await, rent_of(ls2, "2025-01-01").await), (1186.0, 1124.0), "31 days at 6 and at 4");
+    assert_eq!((rent_of(ls1, "2026-01-01").await, rent_of(ls2, "2026-01-01").await), (1155.0, 1155.0), "31 days at 5 each");
+    // Without a figure, what was spent is the year's submitted bills charged to its shared costs.
+    let cleaning_bill = uid(&t.insert(&a, "PurchaseInvoice", bill_of(spark, "2025-06-30", json!([line("4380", Some(shared))]))).await["id"]);
+    t.k.submit(&a, "PurchaseInvoice", cleaning_bill, None).await.expect("approved");
+    t.insert(&a, "PurchaseInvoice", bill_of(spark, "2025-07-01", json!([line("999", Some(shared))]))).await;
+    let done = t.k.run_action(&manager, "ServiceChargeBudget", hall_2025, "reconcile", json!({})).await.expect("reconciled from the books");
+    assert_eq!(done["leases"], 2);
+    let hall_now = t.get("ServiceChargeBudget", hall_2025).await;
+    assert_eq!(dec(&hall_now["actual"]), 4380.0, "the submitted bill only");
+    let balances: Vec<(Uuid, f64, f64, f64, f64)> = hall_now["balances"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| (uid(&r["lease"]), dec(&r["share"]), dec(&r["charged"]), dec(&r["due"]), dec(&r["difference"])))
+        .collect();
+    assert_eq!(balances, vec![(ls1, 60.0, 2190.0, 2628.0, 438.0), (ls2, 40.0, 1460.0, 1752.0, 292.0)], "each its weighted share of what was spent");
+    refused(t.k.run_action(&manager, "ServiceChargeBudget", hall_2026, "reconcile", json!({})).await, "invalid", "");
 }

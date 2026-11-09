@@ -32,10 +32,12 @@ Property and facilities for [Ferrum](https://github.com/CBFerrum/Ferrum):
   it runs, from the next period to invoice on. Each period is invoiced at the rent in effect on
   its first day.
 - **Service charges.** A building's Service Charge Budget for a year lists its shared costs, and
-  is shared among its units by floor area once in use. A lease that pays service charge is invoiced
+  is shared among its units once in use by its basis: floor area, equal shares, or floor area by
+  each unit's weighting (a shop on the street bearing more than its area). A lease that pays service charge is invoiced
   its unit's share with its rent, each period's line its days in each budget year at that year's
   rate (the next year's once its budget is in use, else the first's). Once the year is over,
-  Reconcile takes what was spent and gives each such lease its share of the difference for its days
+  Reconcile takes what was spent (given, or read from the submitted bills charged to the budget's
+  own cost center, its shared costs) and gives each such lease its share of the difference for its days
   within the year: an invoice for more, or a credit note against its latest issued invoice of the
   year for less, noted when there is none.
 - **Indexed rent.** A lease may follow a Rent Index (a consumer price index, with its value from
@@ -78,8 +80,15 @@ Property and facilities for [Ferrum](https://github.com/CBFerrum/Ferrum):
   address.
 - **Owners' statements.** For a building and some days: what was collected on its rent invoices for
   periods starting then (late fees in, credit notes out), less the management fee (the building's
-  percentage) and the expenses charged to the owner (repairs done then, at their cost, once each,
-  and lines added by hand). Billing the payout makes the owner's purchase invoice to the company,
+  percentage) and the expenses charged to the owner, each once: the bills in ERP submitted and posted
+  then whose lines carry the building's cost center (those lines), or that a repair of its units
+  names (the whole bill, rather than the cost typed on the repair); repairs done then without a
+  bill, at their cost; and lines added by hand. A building's owner's costs and a budget's shared
+  costs have cost centers of their own, never the same one.
+- **Owner Reconciliation**, a report: each building's billed statements beside the books. What they
+  charged from bills under its cost center against what the ledger carries there in their days (a
+  bill approved after its statement was billed shows as a difference), and the payouts against the
+  owner's bills, paid and still to pay. Billing the payout makes the owner's purchase invoice to the company,
   from the owner as ERP's supplier, for accounts to pay as ERP pays bills. The owner sees billed
   statements on the portal, and what is still to pay on them. An owner signs in to the portal once
   an administrator has made them a portal person (Administration, Users).
@@ -112,15 +121,16 @@ cd ui && npm run build && npm run check
 
 ## Not yet
 
-- Service charges are shared by floor area only (no weightings or schedules), and the landlord
-  bears vacant units' shares. A statement's expenses are repairs and lines by hand: ERP's bills are not read for
-  them, and its fee is one percentage of what was collected.
+- Service charge schedules (costs some units do not share, such as a lift), and the landlord bears
+  vacant units' shares. A statement's fee is one percentage of what was collected; costs approved
+  after a statement was billed are shown, not carried to the next one.
 - Paying rent on the portal (ERP's invoices page shows what is due).
 
 ## Changelog
 
 | Version | Highlights |
 |---|---|
+| **0.8.0** | Owners' expenses from ERP's approved bills (by the building's cost center, or a repair's bill); service charges by floor area, equal shares or weighted area, and what was spent read from the bills; the Owner Reconciliation report (FEO-050). |
 | **0.7.12** | Its names in Arabic and Hindi; the last English sentences translated. |
 | **0.7.11** | Sentences built in code are words too, in Arabic and Hindi. |
 | **0.7.10** | The assistant knows its records. |

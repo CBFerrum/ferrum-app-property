@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.0
+
+Property accounting reconciled with the books (FEO-050).
+
+- **Owners' expenses from ERP's bills.** A building names its owner's costs in the books (a cost center). A statement charges, each once, the bills submitted and posted in its days whose lines carry it (those lines' net), and the bills a repair of its units names (RepairRequest's new Bill: the whole bill's net, rather than the cost typed). Drafts are not charged; the owners' own payout bills never are.
+- **Apportionment rules.** A Service Charge Budget has a basis: Floor Area (as before), Equal Shares, or Weighted Area (each unit's floor area by its new Weighting). A budget in use keeps its basis.
+- **Spending from the books.** A budget names its shared costs in the books (a cost center of its own, never a building's owner's): Reconcile without a figure reads what was spent from the year's submitted bills charged to it.
+- **Owner Reconciliation**, a report for Property Managers: each building's billed statements beside the ledger (expenses charged from bills under its cost center against what the books carry there in those days) and their payouts against the owner's bills, paid and still to pay.
+- Names in Arabic and Hindi for the new fields and the report.
+
 ## 0.7.12
 
 Rebuilt with Ferrum-Frontend c59c9a2: the names of its models, fields and manifest in Arabic and Hindi (240 each in ui/src/locales/names, which the platform serves to every page of the workspace, so a record's labels, the launcher and the bar read in the person's language), and the sentences its pages still showed in English (split around a link or a figure, built in code from a template or word by word) whole and translated (60 words each in ui/src/locales). Translated by the model, to be reviewed by native speakers.
