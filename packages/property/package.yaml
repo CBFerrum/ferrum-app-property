@@ -24,6 +24,7 @@ roles:
       - {entity: OwnerStatement, read: true, write: true, create: true, export: true}
       - {entity: Supplier, read: true}
       - {entity: PurchaseInvoice, read: true}
+      - {entity: CostCenter, read: true}
       - {entity: RentInvoice, read: true, export: true}
       - {entity: Inspection, read: true, write: true, create: true}
       - {entity: RepairRequest, read: true, write: true, create: true}
