@@ -16,6 +16,7 @@
 //! so a workspace without the `property` package never runs them.
 
 mod leases;
+mod reports;
 mod requests;
 mod service;
 mod site;
@@ -46,13 +47,14 @@ pub fn register(hooks: &mut HookRegistry) {
         .register("Lease", Arc::new(leases::LeaseHook))
         .register("RepairRequest", Arc::new(requests::RequestHook))
         .register("ServiceChargeBudget", Arc::new(service::BudgetHook))
-        .register("OwnerStatement", Arc::new(statements::StatementHook));
+        .register("OwnerStatement", Arc::new(statements::StatementHook))
+        .register("Building", Arc::new(statements::BuildingHook));
     hooks.add_site("property", Arc::new(site::PropertySite));
 }
 
 /// This app's reports: none of its own yet; rent is ERP's receivables.
 pub fn reports() -> Vec<Arc<dyn ReportSource>> {
-    vec![]
+    vec![Arc::new(reports::OwnerReconciliation)]
 }
 
 /// Upkeep: each active lease's due periods invoiced, and leases past their end ended, as of each
