@@ -588,6 +588,11 @@ async fn scenario() {
     t.k.update(&manager, "RepairRequest", dripping, obj(json!({"status": "Done", "purchase_invoice": tap_bill.to_string()})), None)
         .await
         .expect("done, with its bill");
+    // A repair naming a bill that is the building's already is charged it once, by those lines.
+    let hall_lights = uid(&t.insert(&manager, "RepairRequest", json!({"unit": u101.to_string(), "summary": "Hall lights out"})).await["id"]);
+    t.k.update(&manager, "RepairRequest", hall_lights, obj(json!({"status": "Done", "purchase_invoice": lights.to_string()})), None)
+        .await
+        .expect("done, with its bill");
     let statement = |from: &str, to: &str| json!({"building": tower.to_string(), "period_from": from, "period_to": to, "expenses": [{"description": "Gutters cleaned", "amount": "500"}]});
     let os = t.insert(&manager, "OwnerStatement", statement("2026-01-01", "2030-12-31")).await;
     assert_eq!(
