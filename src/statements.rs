@@ -1,7 +1,9 @@
 //! Owners' statements. A building's owner is owed, for some days, what was collected on its rent
 //! invoices for periods starting then (rent, charges and late fees paid, credit notes taken off),
 //! less the management fee the company keeps (the building's share) and the expenses charged to
-//! them: the repairs of its units done then, at their cost and once each, and any added by hand.
+//! them, each once: the bills in ERP, submitted and posted then, whose lines carry the building's
+//! cost center (those lines) or that a repair of its units names (the whole bill); the repairs done
+//! then without a bill, at the cost typed on them; and any added by hand.
 //! While a draft, a statement is worked out again whenever it is saved. Billing the payout makes
 //! the owner's purchase invoice to the company, from the owner as ERP's supplier and as the
 //! settings' owner payout item, paid as ERP pays bills; the statement is then kept as billed, and
@@ -15,6 +17,7 @@ use ferrum_domain::util::{d, elevated, id, money, round, rows, s};
 use ferrum_kernel::{Doc, DocHook, Error, HookCtx, Result, Tx};
 use rust_decimal::Decimal;
 use serde_json::{Value, json};
+use std::collections::HashSet;
 use uuid::Uuid;
 
 pub struct StatementHook;
@@ -44,6 +47,7 @@ async fn repairs(tx: &mut Tx, tenant: Uuid, building: Uuid, (from, to): (NaiveDa
         "select r.id, concat('Repair ', r.number, ', unit ', u.unit_number, ': ', r.summary), r.cost \
          from e_repair_request r join e_unit u on u.tenant_id = r.tenant_id and u.id = r.unit \
          where r.tenant_id = $1 and u.building = $2 and r.status = 'Done' and r.done_on between $3 and $4 and coalesce(r.cost, 0) > 0 \
+         and r.purchase_invoice is null \
          and not exists (select 1 from e_owner_statement__expenses e where e.tenant_id = r.tenant_id and e.repair = r.id and e.parent_id is distinct from $5) \
          order by r.done_on, r.number",
     )
@@ -54,6 +58,51 @@ async fn repairs(tx: &mut Tx, tenant: Uuid, building: Uuid, (from, to): (NaiveDa
     .bind(me)
     .fetch_all(&mut **tx)
     .await?)
+}
+
+/// The bills in ERP charged to `building`, submitted and posted from `from` to `to`, not charged on
+/// another statement and not its owners' payouts: (bill, its line's words, amount). Those whose
+/// lines carry the building's cost center are charged those lines' net; those a repair of its
+/// units names, the whole bill's net.
+async fn bills(tx: &mut Tx, tenant: Uuid, building: Uuid, (from, to): (NaiveDate, NaiveDate), me: Option<Uuid>) -> Result<Vec<(Uuid, String, Decimal)>> {
+    let unused = "not exists (select 1 from e_owner_statement o where o.tenant_id = pi.tenant_id and o.purchase_invoice = pi.id) \
+                  and not exists (select 1 from e_owner_statement__expenses e where e.tenant_id = pi.tenant_id and e.purchase_invoice = pi.id \
+                                  and e.parent_id is distinct from $5)";
+    let charged: Vec<(Uuid, String, Decimal)> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
+        "select pi.id, concat('Bill ', coalesce(pi.number, ''), ' from ', coalesce(pi.supplier_name, '')), \
+                sum(coalesce(it.base_net_amount, it.net_amount, it.amount, 0)) \
+         from e_building b join e_purchase_invoice__items it on it.tenant_id = b.tenant_id and it.cost_center = b.cost_center \
+         join e_purchase_invoice pi on pi.tenant_id = it.tenant_id and pi.id = it.parent_id \
+         where b.tenant_id = $1 and b.id = $2 and pi.docstatus = 1 and pi.posting_date between $3 and $4 and {unused} \
+         group by pi.id, pi.number, pi.supplier_name, pi.posting_date order by pi.posting_date, pi.number"
+    )))
+    .bind(tenant)
+    .bind(building)
+    .bind(from)
+    .bind(to)
+    .bind(me)
+    .fetch_all(&mut **tx)
+    .await?;
+    let repaired: Vec<(Uuid, String, Decimal)> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
+        "select pi.id, concat('Bill ', coalesce(pi.number, ''), ' from ', coalesce(pi.supplier_name, ''), ' for repair ', r.number, ', unit ', u.unit_number), \
+                coalesce(pi.base_net_total, pi.net_total, 0) \
+         from e_repair_request r join e_unit u on u.tenant_id = r.tenant_id and u.id = r.unit \
+         join e_purchase_invoice pi on pi.tenant_id = r.tenant_id and pi.id = r.purchase_invoice \
+         where r.tenant_id = $1 and u.building = $2 and pi.docstatus = 1 and pi.posting_date between $3 and $4 and {unused} \
+         order by pi.posting_date, pi.number"
+    )))
+    .bind(tenant)
+    .bind(building)
+    .bind(from)
+    .bind(to)
+    .bind(me)
+    .fetch_all(&mut **tx)
+    .await?;
+    // A bill under the cost center that a repair also names is charged once, by its lines there.
+    let mut seen: HashSet<Uuid> = charged.iter().map(|b| b.0).collect();
+    let mut out = charged;
+    out.extend(repaired.into_iter().filter(|b| seen.insert(b.0)));
+    Ok(out)
 }
 
 /// The fee on `collected` at `percent`, and what is left once it and `expenses` are taken off.
@@ -86,10 +135,10 @@ impl DocHook for StatementHook {
             .await?
             .flatten();
         let percent = percent.unwrap_or_default();
-        // Lines added by hand stay; the repairs' are worked out again.
+        // Lines added by hand stay; the repairs' and bills' are worked out again.
         let mut lines: Vec<Value> = rows(doc, "expenses")
             .into_iter()
-            .filter(|l| id(l, "repair").is_none())
+            .filter(|l| id(l, "repair").is_none() && id(l, "purchase_invoice").is_none())
             .map(|mut l| {
                 // A row added by hand keeps its id, or is given one.
                 if l.get("id").is_none_or(Value::is_null) {
@@ -100,6 +149,9 @@ impl DocHook for StatementHook {
             .collect();
         for (repair, words, cost) in repairs(hc.tx, tenant, building, (from, to), id(doc, "id")).await? {
             lines.push(json!({"id": Uuid::now_v7().to_string(), "description": words, "amount": money(cost), "repair": repair.to_string()}));
+        }
+        for (bill, words, amount) in bills(hc.tx, tenant, building, (from, to), id(doc, "id")).await? {
+            lines.push(json!({"id": Uuid::now_v7().to_string(), "description": words, "amount": money(amount), "purchase_invoice": bill.to_string()}));
         }
         let spent: Decimal = lines.iter().filter_map(Value::as_object).map(|l| d(l, "amount")).sum();
         let (fee, left) = payout(got, percent, spent);
@@ -199,6 +251,30 @@ impl DocHook for StatementHook {
         let bill_id = id(&bill, "id").ok_or_else(|| Error::internal("a purchase invoice without an id"))?;
         hc.kernel.set_values_tx(&system, hc.tx, "OwnerStatement", me, obj(json!({"status": "Billed", "purchase_invoice": bill_id.to_string()}))).await?;
         Ok(Some(json!({"status": "Billed", "purchase_invoice": created("PurchaseInvoice", &bill)})))
+    }
+}
+
+/// A building's owner's costs and a budget's shared costs are kept apart in the books.
+pub struct BuildingHook;
+
+#[async_trait]
+impl DocHook for BuildingHook {
+    fn name(&self) -> &'static str {
+        "property.building"
+    }
+
+    async fn validate(&self, hc: &mut HookCtx<'_>, doc: &Doc) -> Result<()> {
+        let Some(cc) = id(doc, "cost_center") else { return Ok(()) };
+        let shared: Option<String> =
+            sqlx::query_scalar("select coalesce(number, id::text) from e_service_charge_budget where tenant_id = $1 and cost_center = $2 limit 1")
+                .bind(hc.ctx.tenant)
+                .bind(cc)
+                .fetch_optional(&mut **hc.tx)
+                .await?;
+        if let Some(budget) = shared {
+            return Err(Error::field("cost_center", format!("holds the shared costs of service charge budget {budget}: the owner's costs are kept apart")));
+        }
+        Ok(())
     }
 }
 

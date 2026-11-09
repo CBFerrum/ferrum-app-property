@@ -55,12 +55,15 @@ pub(crate) async fn service_for(tx: &mut Tx, tenant: Uuid, lease: &Doc, from: Na
     Ok(Some(Service { item, annual, year_days: (year_to - year_from).num_days() + 1, year_to, next }))
 }
 
-/// A unit's share of the budget in use on `on`, with the item it is invoiced as and the budget's
-/// year: (item, share, first day, last day).
+/// A unit's share of the budget in use on `on` by its basis (floor area, equal shares, or floor area
+/// by the units' weightings), with the item it is invoiced as and the budget's year: (item, share,
+/// first day, last day).
 async fn share_on(tx: &mut Tx, tenant: Uuid, unit: Uuid, on: NaiveDate) -> Result<Option<(Uuid, Decimal, NaiveDate, NaiveDate)>> {
     let row: Option<(Option<Uuid>, Option<Decimal>, NaiveDate, NaiveDate, Option<Decimal>, Option<Decimal>)> = sqlx::query_as(
-        "select (select service_charge_item from e_property_settings where tenant_id = $1 limit 1), g.budget, g.year_from, g.year_to, u.area, \
-           (select sum(o.area) from e_unit o where o.tenant_id = g.tenant_id and o.building = g.building) \
+        "select (select service_charge_item from e_property_settings where tenant_id = $1 limit 1), g.budget, g.year_from, g.year_to, \
+           case g.basis when 'Equal Shares' then 1::numeric when 'Weighted Area' then u.area * coalesce(u.weighting, 1) else u.area end, \
+           (select sum(case g.basis when 'Equal Shares' then 1::numeric when 'Weighted Area' then o.area * coalesce(o.weighting, 1) else o.area end) \
+            from e_unit o where o.tenant_id = g.tenant_id and o.building = g.building) \
          from e_service_charge_budget g join e_unit u on u.tenant_id = g.tenant_id and u.id = $2 and u.building = g.building \
          where g.tenant_id = $1 and g.status in ('Active', 'Reconciled') and $3 between g.year_from and g.year_to order by g.year_from desc limit 1",
     )
@@ -129,13 +132,23 @@ impl DocHook for BudgetHook {
         Ok(())
     }
 
-    async fn validate_change(&self, _hc: &mut HookCtx<'_>, old: Option<&Doc>, doc: &Doc) -> Result<()> {
+    async fn validate_change(&self, hc: &mut HookCtx<'_>, old: Option<&Doc>, doc: &Doc) -> Result<()> {
         // A budget in use keeps its year and costs: what was invoiced stands on them.
         if let Some(old) = old
             && s(old, "status") != Some("Draft")
-            && ["building", "year_from", "year_to", "heads", "budget"].iter().any(|f| old.get(*f) != doc.get(*f))
+            && ["building", "year_from", "year_to", "heads", "budget", "basis"].iter().any(|f| old.get(*f) != doc.get(*f))
         {
-            return Err(Error::invalid("a budget in use keeps its building, year and costs"));
+            return Err(Error::invalid("a budget in use keeps its building, year, costs and basis"));
+        }
+        if let Some(cc) = id(doc, "cost_center") {
+            let owners: Option<String> = sqlx::query_scalar("select building_name from e_building where tenant_id = $1 and cost_center = $2 limit 1")
+                .bind(hc.ctx.tenant)
+                .bind(cc)
+                .fetch_optional(&mut **hc.tx)
+                .await?;
+            if let Some(b) = owners {
+                return Err(Error::field("cost_center", format!("holds {b}'s owner's costs: shared costs are kept apart")));
+            }
         }
         Ok(())
     }
@@ -171,18 +184,46 @@ impl DocHook for BudgetHook {
     }
 }
 
-/// `reconcile` `{actual}`: once the year is over, each lease that paid service charge in it is
-/// invoiced or credited its unit's share of what was spent less what was budgeted, for its days.
+/// What the submitted bills charged to `cc` and posted in the year came to (their lines' net).
+async fn spent_in_books(tx: &mut Tx, tenant: Uuid, cc: Uuid, (from, to): (NaiveDate, NaiveDate)) -> Result<Decimal> {
+    Ok(sqlx::query_scalar(
+        "select coalesce(sum(coalesce(it.base_net_amount, it.net_amount, it.amount, 0)), 0) from e_purchase_invoice__items it \
+         join e_purchase_invoice pi on pi.tenant_id = it.tenant_id and pi.id = it.parent_id \
+         where it.tenant_id = $1 and it.cost_center = $2 and pi.docstatus = 1 and pi.posting_date between $3 and $4",
+    )
+    .bind(tenant)
+    .bind(cc)
+    .bind(from)
+    .bind(to)
+    .fetch_one(&mut **tx)
+    .await?)
+}
+
+/// `reconcile` `{actual?}`: once the year is over, each lease that paid service charge in it is
+/// invoiced or credited its unit's share (by the budget's basis) of what was spent less what was
+/// budgeted, for its days. What was spent is read from the bills charged to the budget's cost
+/// center when it is not given.
 async fn reconcile(hc: &mut HookCtx<'_>, doc: &Doc, params: &Value) -> Result<Value> {
     let me = id(doc, "id").ok_or_else(|| Error::internal("a budget without an id"))?;
-    let actual: Decimal = params
-        .get("actual")
-        .and_then(|v| v.as_str().map(str::to_string).or_else(|| v.as_f64().map(|f| f.to_string())))
-        .and_then(|v| v.parse().ok())
-        .filter(|a: &Decimal| *a >= Decimal::ZERO)
-        .ok_or_else(|| Error::field("actual", "is what was spent, nothing or more"))?;
     let (Some(building), Some(year_from), Some(year_to)) = (id(doc, "building"), date(doc, "year_from"), date(doc, "year_to")) else {
         return Err(Error::invalid("a budget names its building and year"));
+    };
+    let given = match params.get("actual") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(v)) if v.trim().is_empty() => None,
+        Some(v) => Some(
+            v.as_str()
+                .map(str::to_string)
+                .or_else(|| v.as_f64().map(|f| f.to_string()))
+                .and_then(|v| v.trim().parse::<Decimal>().ok())
+                .filter(|a| *a >= Decimal::ZERO)
+                .ok_or_else(|| Error::field("actual", "is what was spent, nothing or more"))?,
+        ),
+    };
+    let actual = match (given, id(doc, "cost_center")) {
+        (Some(a), _) => a,
+        (None, Some(cc)) => spent_in_books(hc.tx, hc.ctx.tenant, cc, (year_from, year_to)).await?,
+        (None, None) => return Err(Error::field("actual", "is what was spent: give it, or name the budget's cost center to read it from the bills")),
     };
     if hc.ctx.today() <= year_to {
         return Err(Error::field("actual", format!("is known once its year is over, after {year_to}")));
@@ -201,9 +242,13 @@ async fn reconcile(hc: &mut HookCtx<'_>, doc: &Doc, params: &Value) -> Result<Va
         .fetch_optional(&mut **hc.tx)
         .await?
         .flatten();
-    let total: Option<Decimal> = sqlx::query_scalar("select sum(area) from e_unit where tenant_id = $1 and building = $2")
+    // Each unit's weight by the budget's basis.
+    let basis = s(doc, "basis").unwrap_or("Floor Area").to_string();
+    let weight = "case $3 when 'Equal Shares' then 1::numeric when 'Weighted Area' then area * coalesce(weighting, 1) else area end";
+    let total: Option<Decimal> = sqlx::query_scalar(sqlx::AssertSqlSafe(format!("select sum({weight}) from e_unit where tenant_id = $1 and building = $2")))
         .bind(hc.ctx.tenant)
         .bind(building)
+        .bind(&basis)
         .fetch_one(&mut **hc.tx)
         .await?;
     let total = total.filter(|t| *t > Decimal::ZERO).ok_or_else(|| Error::invalid("the building's units have no floor area to share by"))?;
@@ -224,9 +269,13 @@ async fn reconcile(hc: &mut HookCtx<'_>, doc: &Doc, params: &Value) -> Result<Va
     for lease_id in leases {
         let lease = hc.kernel.get_tx(&system, hc.tx, "Lease", lease_id, false).await?;
         let (Some(start), Some(last), Some(unit)) = (date(&lease, "starts_on"), last_day(&lease), id(&lease, "unit")) else { continue };
-        let area: Option<Decimal> =
-            sqlx::query_scalar("select area from e_unit where tenant_id = $1 and id = $2").bind(hc.ctx.tenant).bind(unit).fetch_one(&mut **hc.tx).await?;
-        let share = area.unwrap_or_default() / total;
+        let mine: Option<Decimal> = sqlx::query_scalar(sqlx::AssertSqlSafe(format!("select {weight} from e_unit where tenant_id = $1 and id = $2")))
+            .bind(hc.ctx.tenant)
+            .bind(unit)
+            .bind(&basis)
+            .fetch_one(&mut **hc.tx)
+            .await?;
+        let share = mine.unwrap_or_default() / total;
         let days = (last.min(year_to) - start.max(year_from)).num_days() + 1;
         if days <= 0 {
             continue;
