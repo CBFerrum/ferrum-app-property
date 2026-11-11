@@ -88,7 +88,7 @@ export function PortalHome() {
                         key={`${i.period_from}`}
                         title={isolate(t("{period_from} to {period_to}", { period_from: String(i.period_from), period_to: String(i.period_to) }))}
                         meta={i.issued ? undefined : t("Not issued yet")}
-                        trailing={<span className="text-sm font-medium tabular-nums">{isolate(i.amount ?? "")}</span>}
+                        trailing={<span className="num">{isolate(i.amount ?? "")}</span>}
                         action={i.invoice ? <ButtonLink href={`/portal/invoices/${i.invoice}`}>{t("Open")}</ButtonLink> : undefined}
                       />
                     ))}
