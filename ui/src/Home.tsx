@@ -2,9 +2,8 @@
 // days, at their end or on notice; and the requests still open, urgent first. Each opens its record.
 
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router";
 import { api, docPath, todayIso, t, isolate } from "@ferrum/client";
-import { Badge, ErrorState, ListSkeleton, useShellTitle } from "@ferrum/kit";
+import { ButtonLink, HomeSkeleton, LoadFailed, PageHead, Queue, QueueGrid, QueueItem, StatePanel, StatusBadge, Tile, TileGrid, type Tone } from "@ferrum/kit";
 
 interface Row {
   id: string;
@@ -40,8 +39,13 @@ export function endingSoon(leases: Row[], today: string, days = 60): Row[] {
     .sort((a, b) => lastDay(a).localeCompare(lastDay(b)));
 }
 
+/** RepairRequest.priority as stored: an urgent request keeps its mark. */
+export const PRIORITY_TONES: Readonly<Record<string, Tone>> = { Urgent: "red" };
+
+/** The most a queue lists before "and N more" opens the list. */
+const LIMIT = 5;
+
 export function Home() {
-  useShellTitle(t("Property"));
   const q = useQuery({
     queryKey: ["property", "home"],
     queryFn: async () => {
@@ -54,58 +58,85 @@ export function Home() {
       return { buildings, units, leases, requests };
     },
   });
-  if (q.isPending) return <ListSkeleton className="np-page" />;
-  if (q.isError) return <ErrorState error={q.error} onRetry={() => void q.refetch()} />;
+  const title = t("Units");
+  const head = (
+    <PageHead title={title} actions={<ButtonLink to="/e/Lease/new" variant="primary" icon="plus">{t("New lease")}</ButtonLink>} />
+  );
+  if (q.isPending) return <>{head}<HomeSkeleton queues={2} /></>;
+  if (q.isError) return <>{head}<LoadFailed error={q.error} onRetry={() => void q.refetch()} /></>;
+  if (!q.data.buildings.length)
+    return (
+      <>
+        {head}
+        <StatePanel kind="empty" title={t("No properties yet")} action={<ButtonLink to="/e/Building/new" variant="primary" icon="plus">{t("Add a property")}</ButtonLink>}>
+          {t("Add a property and its units, and they show here with the leases ending and the repairs waiting.")}
+        </StatePanel>
+      </>
+    );
   const grouped = byBuilding(q.data.units);
   const ending = endingSoon(q.data.leases, todayIso());
   const open = [...q.data.requests].sort((a, b) => Number(b.priority === "Urgent") - Number(a.priority === "Urgent"));
+  // What needs the person comes before the units, when there is any; when there is none, the two quiet lines follow the units.
+  const queues = (
+    <QueueGrid>
+      <Queue title={t("Ending in 60 days")} count={ending.length} more={{ to: "/e/Lease", count: ending.length - LIMIT }}>
+        {ending.slice(0, LIMIT).map((l) => (
+          <QueueItem
+            key={l.id}
+            to={`/e/Lease/${l.id}`}
+            title={isolate(String(l.number ?? ""))}
+            meta={isolate(l.leaving_on ? t("Ends {date}, on notice from the {value}", { date: lastDay(l), value: String(l.notice_by ?? "").toLowerCase() }) : t("Ends {date}", { date: lastDay(l) }))}
+          />
+        ))}
+      </Queue>
+      <Queue title={t("Open requests")} count={open.length} tone={open.some((r) => r.priority === "Urgent") ? "attention" : "default"} more={{ to: "/e/RepairRequest", count: open.length - LIMIT }}>
+        {open.slice(0, LIMIT).map((r) => (
+          <QueueItem
+            key={r.id}
+            to={`/e/RepairRequest/${r.id}`}
+            title={isolate(String(r.summary ?? ""))}
+            meta={isolate(String(r.number ?? ""))}
+            trailing={r.priority === "Urgent" ? <StatusBadge value="Urgent" tones={PRIORITY_TONES} label={t("Urgent")} /> : undefined}
+          />
+        ))}
+      </Queue>
+    </QueueGrid>
+  );
+  const needsYou = ending.length > 0 || open.length > 0;
   return (
-    <div className="np-page">
-      <header className="row" style={{ justifyContent: "space-between" }}>
-        <h2>{t("Units")}</h2>
-        <Link to="/e/Lease/new">{t("New lease")}</Link>
-      </header>
-      {q.data.buildings.map((b) => (
-        <section key={b.id} className="card card-pad stack" aria-label={String(b.building_name)}>
-          <h3>{isolate(String(b.building_name))}</h3>
-          <div className="np-columns">
-            {(grouped.get(b.id) ?? []).map((u) => (
-              <Link key={u.id} className="card card-pad stack" to={`/e/Unit/${u.id}`}>
-                <strong>{isolate(String(u.unit_number))}</strong>
-                <span className="faint">{isolate(String(u.unit_type ?? ""))}</span>
-                <Badge tone={UNIT_TONE[String(u.status)] ?? "amber"}>{isolate(String(u.status))}</Badge>
-              </Link>
-            ))}
-          </div>
-        </section>
-      ))}
-      <div className="np-columns">
-        <section className="card card-pad stack" aria-label={t("Leases ending soon")}>
-          <h3>{t("Ending in 60 days ({length})", { length: ending.length })}</h3>
-          <ul className="stack">
-            {ending.map((l) => (
-              <li key={l.id}>
-                <Link to={`/e/Lease/${l.id}`}>
-                  {isolate(String(l.number ?? ""))} {t("· ends")} {isolate(lastDay(l))}
-                  {l.leaving_on ? t(" on notice from the {value}", { value: String(l.notice_by ?? "").toLowerCase() }) : ""}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-        <section className="card card-pad stack" aria-label={t("Open requests")}>
-          <h3>{t("Open requests ({length})", { length: open.length })}</h3>
-          <ul className="stack">
-            {open.map((r) => (
-              <li key={r.id}>
-                <Link to={`/e/RepairRequest/${r.id}`}>
-                  {isolate(String(r.number ?? ""))} · {isolate(String(r.summary))} {r.priority === "Urgent" ? t("· urgent") : ""}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
+    <>
+      {head}
+      {needsYou && queues}
+      <div className={`grid gap-6 ${needsYou ? "mt-6" : ""}`}>
+        {q.data.buildings.map((b) => {
+          const units = grouped.get(b.id) ?? [];
+          const id = `property-${b.id}`;
+          return (
+            <section key={b.id} aria-labelledby={id} className="grid gap-3">
+              <div className="flex items-baseline gap-2">
+                <h2 id={id} className="text-base font-semibold">{isolate(String(b.building_name))}</h2>
+                <span className="text-sm tabular-nums text-muted-foreground">{units.length}</span>
+              </div>
+              {units.length ? (
+                <TileGrid label={String(b.building_name)}>
+                  {units.map((u) => (
+                    <Tile
+                      key={u.id}
+                      to={`/e/Unit/${u.id}`}
+                      title={isolate(String(u.unit_number))}
+                      meta={u.unit_type ? <span>{isolate(String(u.unit_type))}</span> : undefined}
+                      status={<StatusBadge value={u.status} tones={UNIT_TONE} />}
+                    />
+                  ))}
+                </TileGrid>
+              ) : (
+                <p className="text-sm text-muted-foreground">{t("No units yet")}</p>
+              )}
+            </section>
+          );
+        })}
       </div>
-    </div>
+      {!needsYou && <div className="mt-6">{queues}</div>}
+    </>
   );
 }

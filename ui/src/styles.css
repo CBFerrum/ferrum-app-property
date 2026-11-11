@@ -4,14 +4,7 @@
 @source "../../../ferrum/web/src";
 @source ".";
 
-.np-page {
-  display: grid;
-  gap: 16px;
-  padding: 16px;
-}
-
-.np-columns {
-  display: grid;
-  gap: 16px;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+/* The tenant's repair request form: as wide as its fields need, not the page. */
+.property-form {
+  max-width: 32rem;
 }
