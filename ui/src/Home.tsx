@@ -4,7 +4,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { api, docPath, todayIso, t, isolate } from "@ferrum/client";
-import { Badge, ErrorState, PageLoading, useShellTitle } from "@ferrum/kit";
+import { Badge, ErrorState, ListSkeleton, useShellTitle } from "@ferrum/kit";
 
 interface Row {
   id: string;
@@ -54,7 +54,7 @@ export function Home() {
       return { buildings, units, leases, requests };
     },
   });
-  if (q.isPending) return <PageLoading />;
+  if (q.isPending) return <ListSkeleton className="np-page" />;
   if (q.isError) return <ErrorState error={q.error} onRetry={() => void q.refetch()} />;
   const grouped = byBuilding(q.data.units);
   const ending = endingSoon(q.data.leases, todayIso());
