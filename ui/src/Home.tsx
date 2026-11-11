@@ -3,7 +3,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { api, docPath, todayIso, t, isolate } from "@ferrum/client";
-import { ButtonLink, HomeSkeleton, LoadFailed, PageHead, Queue, QueueGrid, QueueItem, StatePanel, StatusBadge, Tile, TileGrid, type Tone } from "@ferrum/kit";
+import { ButtonLink, HomeSection, HomeSkeleton, LoadFailed, PageHead, PageStack, Queue, QueueGrid, QueueItem, StatePanel, StatusBadge, Tile, TileGrid, type Tone } from "@ferrum/kit";
 
 interface Row {
   id: string;
@@ -14,7 +14,7 @@ const rows = (entity: string, filters: unknown[], extra: Record<string, string |
   api.get<{ rows: Row[] }>(docPath(entity), { filters: JSON.stringify(filters), limit: 500, ...extra }).then((r) => r.rows);
 
 /** A unit's status as a badge's tone. */
-export const UNIT_TONE: Record<string, "green" | "amber" | "red"> = { Let: "green", Vacant: "amber", "Under Maintenance": "red" };
+export const UNIT_TONE: Readonly<Record<string, Tone>> = { Let: "green", Vacant: "amber", "Under Maintenance": "red" };
 
 /** Units by building id, in the order given. */
 export function byBuilding(units: Row[]): Map<string, Row[]> {
@@ -62,16 +62,16 @@ export function Home() {
   const head = (
     <PageHead title={title} actions={<ButtonLink to="/e/Lease/new" variant="primary" icon="plus">{t("New lease")}</ButtonLink>} />
   );
-  if (q.isPending) return <>{head}<HomeSkeleton queues={2} /></>;
-  if (q.isError) return <>{head}<LoadFailed error={q.error} onRetry={() => void q.refetch()} /></>;
+  if (q.isPending) return <PageStack>{head}<HomeSkeleton queues={2} /></PageStack>;
+  if (q.isError) return <PageStack>{head}<LoadFailed error={q.error} onRetry={() => void q.refetch()} /></PageStack>;
   if (!q.data.buildings.length)
     return (
-      <>
+      <PageStack>
         {head}
         <StatePanel kind="empty" title={t("No properties yet")} action={<ButtonLink to="/e/Building/new" variant="primary" icon="plus">{t("Add a property")}</ButtonLink>}>
           {t("Add a property and its units, and they show here with the leases ending and the repairs waiting.")}
         </StatePanel>
-      </>
+      </PageStack>
     );
   const grouped = byBuilding(q.data.units);
   const ending = endingSoon(q.data.leases, todayIso());
@@ -104,39 +104,30 @@ export function Home() {
   );
   const needsYou = ending.length > 0 || open.length > 0;
   return (
-    <>
+    <PageStack gap="lg">
       {head}
       {needsYou && queues}
-      <div className={`grid gap-6 ${needsYou ? "mt-6" : ""}`}>
-        {q.data.buildings.map((b) => {
-          const units = grouped.get(b.id) ?? [];
-          const id = `property-${b.id}`;
-          return (
-            <section key={b.id} aria-labelledby={id} className="grid gap-3">
-              <div className="flex items-baseline gap-2">
-                <h2 id={id} className="text-base font-semibold">{isolate(String(b.building_name))}</h2>
-                <span className="text-sm tabular-nums text-muted-foreground">{units.length}</span>
-              </div>
-              {units.length ? (
-                <TileGrid label={String(b.building_name)}>
-                  {units.map((u) => (
-                    <Tile
-                      key={u.id}
-                      to={`/e/Unit/${u.id}`}
-                      title={isolate(String(u.unit_number))}
-                      meta={u.unit_type ? <span>{isolate(String(u.unit_type))}</span> : undefined}
-                      status={<StatusBadge value={u.status} tones={UNIT_TONE} />}
-                    />
-                  ))}
-                </TileGrid>
-              ) : (
-                <p className="text-sm text-muted-foreground">{t("No units yet")}</p>
-              )}
-            </section>
-          );
-        })}
-      </div>
-      {!needsYou && <div className="mt-6">{queues}</div>}
-    </>
+      {q.data.buildings.map((b) => {
+        const units = grouped.get(b.id) ?? [];
+        return (
+          <HomeSection key={b.id} title={isolate(String(b.building_name))} count={units.length} empty={t("No units yet")}>
+            {units.length > 0 && (
+              <TileGrid label={String(b.building_name)}>
+                {units.map((u) => (
+                  <Tile
+                    key={u.id}
+                    to={`/e/Unit/${u.id}`}
+                    title={isolate(String(u.unit_number))}
+                    meta={u.unit_type ? <span>{isolate(String(u.unit_type))}</span> : undefined}
+                    status={<StatusBadge value={u.status} tones={UNIT_TONE} />}
+                  />
+                ))}
+              </TileGrid>
+            )}
+          </HomeSection>
+        );
+      })}
+      {!needsYou && queues}
+    </PageStack>
   );
 }

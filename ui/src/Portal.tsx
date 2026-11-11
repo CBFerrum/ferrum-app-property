@@ -9,12 +9,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { useNavigate } from "react-router";
 import { api, errorMessage, t, isolate } from "@ferrum/client";
-import { Button, ButtonLink, Field, HomeSkeleton, LoadFailed, PageHead, StatePanel, StatusBadge, toast } from "@ferrum/kit";
+import { Button, ButtonLink, Field, HomeSection, HomeSkeleton, LoadFailed, PageHead, PageStack, Queue, QueueGrid, QueueItem, StatePanel, StatusBadge, toast, type Tone } from "@ferrum/kit";
 import { PRIORITY_TONES, UNIT_TONE } from "./Home";
 
 // Lease.status and RepairRequest.status as stored (packages/property/entities).
-const LEASE_TONES = { Draft: "neutral", Active: "green", Ended: "neutral", Terminated: "red" } as const;
-const REPAIR_TONES = { Open: "amber", "In Progress": "blue", Done: "green" } as const;
+const LEASE_TONES: Readonly<Record<string, Tone>> = { Draft: "neutral", Active: "green", Ended: "neutral", Terminated: "red" };
+const REPAIR_TONES: Readonly<Record<string, Tone>> = { Open: "amber", "In Progress": "blue", Done: "green" };
 
 const BASE = "/api/app/property/portal";
 
@@ -60,11 +60,11 @@ export function PortalHome() {
   const q = useHome();
   const title = t("Your home");
   const sub = t("Your lease, the rent invoiced, and the repairs you asked for.");
-  if (q.error) return <><PageHead title={title} description={sub} /><LoadFailed error={q.error} onRetry={() => void q.refetch()} /></>;
-  if (!q.data) return <><PageHead title={title} description={sub} /><HomeSkeleton queues={2} /></>;
+  if (q.error) return <PageStack><PageHead title={title} description={sub} /><LoadFailed error={q.error} onRetry={() => void q.refetch()} /></PageStack>;
+  if (!q.data) return <PageStack><PageHead title={title} description={sub} /><HomeSkeleton queues={2} /></PageStack>;
   const { leases, requests } = q.data;
   return (
-    <>
+    <PageStack gap="lg">
       <PageHead
         title={title}
         description={sub}
@@ -73,91 +73,59 @@ export function PortalHome() {
       {!leases.length ? (
         <StatePanel kind="empty" title={t("No lease here yet")}>{t("When a lease is made out to you, it is here with its rent.")}</StatePanel>
       ) : (
-        <div className="grid gap-4">
-          {leases.map((l) => (
-            <section key={l.id} className="card card-pad stack min-w-0" aria-label={t("Lease {value}", { value: l.number ?? "" })}>
-              <header className="grid gap-1">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h2 className="text-base font-semibold">
-                    {isolate(l.building ?? "")} · {isolate(l.unit_number ?? "")}
-                  </h2>
-                  <StatusBadge value={l.status} tones={LEASE_TONES} label={isolate(l.status ?? "")} />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {t("{number} · {starts_on} to", { number: l.number ?? "", starts_on: l.starts_on ?? "" })} {l.terminated_on ?? l.ends_on} · {isolate(l.rent ?? "")} {isolate(String(l.frequency ?? "").toLowerCase())}
-                </p>
-              </header>
+        leases.map((l) => (
+          <HomeSection key={l.id} title={`${isolate(l.building ?? "")} · ${isolate(l.unit_number ?? "")}`}>
+            <div className="grid gap-3">
+              <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <StatusBadge value={l.status} tones={LEASE_TONES} label={isolate(l.status ?? "")} />
+                <span>{isolate(`${t("{number} · {starts_on} to", { number: l.number ?? "", starts_on: l.starts_on ?? "" })} ${l.terminated_on ?? l.ends_on} · ${l.rent ?? ""} ${String(l.frequency ?? "").toLowerCase()}`)}</span>
+              </p>
               {l.invoices.length > 0 && (
-                <div className="table-wrap" tabIndex={0} role="region" aria-label={t("Lease {value}", { value: l.number ?? "" })}>
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th scope="col">{t("Period")}</th>
-                        <th scope="col" className="num">{t("Amount")}</th>
-                        <th scope="col">{t("Invoice")}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {l.invoices.map((i) => {
-                        const period = t("{period_from} to {period_to}", { period_from: String(i.period_from), period_to: String(i.period_to) });
-                        return (
-                          <tr key={`${i.period_from}`}>
-                            <td className="nowrap">{period}</td>
-                            <td className="num">{isolate(i.amount ?? "")}</td>
-                            <td>{i.invoice ? <a href={`/portal/invoices/${i.invoice}`}>{t("Open")}</a> : null}{!i.issued && <span className="text-xs text-muted-foreground">{t("Not issued yet")}</span>}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                <QueueGrid>
+                  <Queue title={t("Rent invoiced")} count={l.invoices.length}>
+                    {l.invoices.map((i) => (
+                      <QueueItem
+                        key={`${i.period_from}`}
+                        title={isolate(t("{period_from} to {period_to}", { period_from: String(i.period_from), period_to: String(i.period_to) }))}
+                        meta={i.issued ? undefined : t("Not issued yet")}
+                        trailing={<span className="text-sm font-medium tabular-nums">{isolate(i.amount ?? "")}</span>}
+                        action={i.invoice ? <ButtonLink href={`/portal/invoices/${i.invoice}`}>{t("Open")}</ButtonLink> : undefined}
+                      />
+                    ))}
+                  </Queue>
+                </QueueGrid>
               )}
-            </section>
-          ))}
-        </div>
+            </div>
+          </HomeSection>
+        ))
       )}
       {requests.length > 0 && (
-        <section className="card card-pad stack mt-4 min-w-0" aria-label={t("Your repairs")}>
-          <h2 className="text-base font-semibold">{t("Repairs you asked for")}</h2>
-          <RepairTable rows={requests.map((r) => ({ number: r.number, unit_number: null, summary: r.summary, priority: r.priority, status: r.status, done_on: r.done_on }))} caption={t("Your repairs")} />
-        </section>
+        <QueueGrid>
+          <RepairQueue title={t("Repairs you asked for")} rows={requests.map((r) => ({ number: r.number, unit_number: null, summary: r.summary, priority: r.priority, status: r.status, done_on: r.done_on }))} />
+        </QueueGrid>
       )}
-    </>
+    </PageStack>
   );
 }
 
-/** Repairs as a table: what needs fixing, its number, its status as a badge and when it was done. */
-function RepairTable({ rows, caption }: { rows: OwnerProperty["repairs"]; caption: string }) {
-  const unit = rows.some((r) => r.unit_number);
+/** Repairs as plain rows: what needs fixing, its number (and unit), its status as a badge and when it was done. */
+function RepairQueue({ title, rows }: { title: string; rows: OwnerProperty["repairs"] }) {
   return (
-    <div className="table-wrap" tabIndex={0} role="region" aria-label={caption}>
-      <table className="table">
-        <thead>
-          <tr>
-            <th scope="col">{t("Repair")}</th>
-            {unit && <th scope="col">{t("Unit")}</th>}
-            <th scope="col">{t("What needs fixing")}</th>
-            <th scope="col">{t("Status")}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, i) => (
-            <tr key={r.number ?? i}>
-              <td className="nowrap">{isolate(r.number ?? "")}</td>
-              {unit && <td>{isolate(r.unit_number ?? "")}</td>}
-              <td>
-                {isolate(r.summary ?? "")}
-                {r.priority === "Urgent" && <> <StatusBadge value="Urgent" tones={PRIORITY_TONES} label={t("Urgent")} /></>}
-              </td>
-              <td>
-                <StatusBadge value={r.status} tones={REPAIR_TONES} label={isolate(r.status ?? "")} />
-                {r.done_on && <span className="text-xs text-muted-foreground">{t(" · done {done_on}", { done_on: r.done_on })}</span>}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <Queue title={title} count={rows.length}>
+      {rows.map((r, i) => (
+        <QueueItem
+          key={r.number ?? i}
+          title={isolate(r.summary ?? "")}
+          meta={isolate([r.number, r.unit_number, r.done_on ? t("Done {done_on}", { done_on: r.done_on }) : ""].filter(Boolean).join(" · "))}
+          trailing={
+            <span className="inline-flex flex-wrap items-center justify-end gap-1">
+              {r.priority === "Urgent" && <StatusBadge value="Urgent" tones={PRIORITY_TONES} label={t("Urgent")} />}
+              <StatusBadge value={r.status} tones={REPAIR_TONES} label={isolate(r.status ?? "")} />
+            </span>
+          }
+        />
+      ))}
+    </Queue>
   );
 }
 
@@ -171,8 +139,8 @@ export function PortalNewRequest() {
   const [priority, setPriority] = useState("Normal");
   const [busy, setBusy] = useState(false);
   const head = <PageHead title={t("Ask for a repair")} back={{ to: "/", label: t("Your home") }} />;
-  if (q.error) return <>{head}<LoadFailed error={q.error} onRetry={() => void q.refetch()} /></>;
-  if (!q.data) return <>{head}<HomeSkeleton queues={1} /></>;
+  if (q.error) return <PageStack>{head}<LoadFailed error={q.error} onRetry={() => void q.refetch()} /></PageStack>;
+  if (!q.data) return <PageStack>{head}<HomeSkeleton queues={1} /></PageStack>;
   const units = rentedNow(q.data.leases);
   const chosen = unit || units[0]?.unit || "";
   const submit = async (e: FormEvent) => {
@@ -190,7 +158,7 @@ export function PortalNewRequest() {
     }
   };
   return (
-    <>
+    <PageStack>
     {head}
     <form className="card card-pad stack property-form" onSubmit={(e) => void submit(e)}>
       <Field label={t("Where")}>
@@ -222,7 +190,7 @@ export function PortalNewRequest() {
         <ButtonLink to="/" variant="ghost">{t("Back")}</ButtonLink>
       </div>
     </form>
-    </>
+    </PageStack>
   );
 }
 
@@ -295,33 +263,27 @@ export function PortalOwner() {
   });
   const title = t("Properties you own");
   const sub = t("Their units and leases, the rent invoiced and still owed, and repairs.");
-  if (q.error) return <><PageHead title={title} description={sub} /><LoadFailed error={q.error} onRetry={() => void q.refetch()} /></>;
-  if (!q.data) return <><PageHead title={title} description={sub} /><HomeSkeleton queues={2} /></>;
+  if (q.error) return <PageStack><PageHead title={title} description={sub} /><LoadFailed error={q.error} onRetry={() => void q.refetch()} /></PageStack>;
+  if (!q.data) return <PageStack><PageHead title={title} description={sub} /><HomeSkeleton queues={2} /></PageStack>;
   const { properties } = q.data;
   return (
-    <>
+    <PageStack gap="lg">
       <PageHead title={title} description={sub} />
       {!properties.length ? (
         <StatePanel kind="empty" title={t("No property here names you as its owner")}>{t("When the managers name you as a property's owner, it is here.")}</StatePanel>
       ) : (
-        <div className="grid gap-4">
-          {properties.map((p) => (
-            <Owned key={p.id} p={p} />
-          ))}
-        </div>
+        properties.map((p) => <Owned key={p.id} p={p} />)
       )}
-    </>
+    </PageStack>
   );
 }
 
 function Owned({ p }: { p: OwnerProperty }) {
   const let_ = p.units.filter((u) => u.status === "Let").length;
   return (
-    <section className="card card-pad stack min-w-0" aria-label={p.name ?? t("Property")}>
-      <header>
-        <h2 className="text-base font-semibold">{isolate(p.name ?? "")}</h2>
-        <p className="text-xs text-muted-foreground">{isolate([p.address, t("{let_} of {length} units let", { let_, length: p.units.length })].filter(Boolean).join(" · "))}</p>
-      </header>
+    <HomeSection title={isolate(p.name ?? "")}>
+     <div className="grid gap-4">
+      <p className="text-xs text-muted-foreground">{isolate([p.address, t("{let_} of {length} units let", { let_, length: p.units.length })].filter(Boolean).join(" · "))}</p>
       <div className="table-wrap" tabIndex={0} role="region" aria-label={p.name ?? t("Property")}>
         <table className="table">
           <caption className="sr-only">{t("The units of {name}", { name: p.name ?? "" })}</caption>
@@ -433,10 +395,12 @@ function Owned({ p }: { p: OwnerProperty }) {
       )}
       {p.repairs.length > 0 && (
         <>
-          <h3 className="text-base font-semibold">{t("Repairs")}</h3>
-          <RepairTable rows={p.repairs} caption={t("Repairs")} />
+          <QueueGrid>
+            <RepairQueue title={t("Repairs")} rows={p.repairs} />
+          </QueueGrid>
         </>
       )}
-    </section>
+     </div>
+    </HomeSection>
   );
 }
