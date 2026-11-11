@@ -9,8 +9,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { api, errorMessage, t, isolate } from "@ferrum/client";
-import { Badge, Button, EmptyState, ErrorState, Field, PageLoading, statusTone, toast, useShellTitle } from "@ferrum/kit";
+import { Badge, Button, ErrorState, Field, ListSkeleton, StatePanel, statusTone, toast, useShellTitle } from "@ferrum/kit";
 import { UNIT_TONE } from "./Home";
+
+// Lease.status and RepairRequest.status as stored (packages/property/entities).
+const LEASE_TONES = { Draft: "neutral", Active: "green", Ended: "neutral", Terminated: "red" } as const;
+const REPAIR_TONES = { Open: "amber", "In Progress": "blue", Done: "green" } as const;
 
 const BASE = "/api/app/property/portal";
 
@@ -56,7 +60,7 @@ export function PortalHome() {
   useShellTitle(t("Your home"));
   const q = useHome();
   if (q.error) return <ErrorState error={q.error} onRetry={() => void q.refetch()} />;
-  if (!q.data) return <PageLoading />;
+  if (!q.data) return <ListSkeleton className="np-page" />;
   const { leases, requests } = q.data;
   return (
     <div className="stack np-page">
@@ -72,9 +76,7 @@ export function PortalHome() {
         )}
       </div>
       {!leases.length ? (
-        <EmptyState title={t("No lease here yet")} icon="building-2">
-          <p className="muted">{t("When a lease is made out to you, it is here with its rent.")}</p>
-        </EmptyState>
+        <StatePanel kind="empty" title={t("No lease here yet")}>{t("When a lease is made out to you, it is here with its rent.")}</StatePanel>
       ) : (
         leases.map((l) => (
           <section key={l.id} className="card card-pad stack" aria-label={t("Lease {value}", { value: l.number ?? "" })}>
@@ -82,7 +84,7 @@ export function PortalHome() {
               <h3>
                 {isolate(l.building ?? "")} · {isolate(l.unit_number ?? "")}
               </h3>
-              <Badge tone={statusTone(l.status)}>{isolate(l.status ?? "")}</Badge>
+              <Badge tone={statusTone(l.status, LEASE_TONES)}>{isolate(l.status ?? "")}</Badge>
             </header>
             <p className="faint">
               {t("{number} · {starts_on} to", { number: l.number ?? "", starts_on: l.starts_on ?? "" })} {l.terminated_on ?? l.ends_on} · {isolate(l.rent ?? "")} {isolate(String(l.frequency ?? "").toLowerCase())}
@@ -107,7 +109,7 @@ export function PortalHome() {
           <ul className="stack">
             {requests.map((r) => (
               <li key={r.id}>
-                {isolate(r.number ?? "")} · {isolate(r.summary ?? "")} · <Badge tone={statusTone(r.status)}>{isolate(r.status ?? "")}</Badge>
+                {isolate(r.number ?? "")} · {isolate(r.summary ?? "")} · <Badge tone={statusTone(r.status, REPAIR_TONES)}>{isolate(r.status ?? "")}</Badge>
                 {r.done_on ? t(" · done {done_on}", { done_on: r.done_on }) : ""}
               </li>
             ))}
@@ -129,7 +131,7 @@ export function PortalNewRequest() {
   const [priority, setPriority] = useState("Normal");
   const [busy, setBusy] = useState(false);
   if (q.error) return <ErrorState error={q.error} onRetry={() => void q.refetch()} />;
-  if (!q.data) return <PageLoading />;
+  if (!q.data) return <ListSkeleton className="np-page" />;
   const units = rentedNow(q.data.leases);
   const chosen = unit || units[0]?.unit || "";
   const submit = async (e: FormEvent) => {
@@ -250,7 +252,7 @@ export function PortalOwner() {
     queryFn: ({ signal }) => api.get<{ properties: OwnerProperty[] }>(`${BASE}/owner`, {}, signal),
   });
   if (q.error) return <ErrorState error={q.error} onRetry={() => void q.refetch()} />;
-  if (!q.data) return <PageLoading />;
+  if (!q.data) return <ListSkeleton className="np-page" />;
   const { properties } = q.data;
   return (
     <div className="stack np-page">
@@ -261,9 +263,7 @@ export function PortalOwner() {
         </div>
       </div>
       {!properties.length ? (
-        <EmptyState title={t("No property here names you as its owner")} icon="building-2">
-          <p className="muted">{t("When the managers name you as a property's owner, it is here.")}</p>
-        </EmptyState>
+        <StatePanel kind="empty" title={t("No property here names you as its owner")}>{t("When the managers name you as a property's owner, it is here.")}</StatePanel>
       ) : (
         properties.map((p) => <Owned key={p.id} p={p} />)
       )}
@@ -394,7 +394,7 @@ function Owned({ p }: { p: OwnerProperty }) {
           <ul className="stack">
             {p.repairs.map((r, i) => (
               <li key={r.number ?? i}>
-                {isolate(r.number ?? "")} · {isolate(r.unit_number ?? "")} · {isolate(r.summary ?? "")} · <Badge tone={statusTone(r.status)}>{isolate(r.status ?? "")}</Badge>
+                {isolate(r.number ?? "")} · {isolate(r.unit_number ?? "")} · {isolate(r.summary ?? "")} · <Badge tone={statusTone(r.status, REPAIR_TONES)}>{isolate(r.status ?? "")}</Badge>
                 {r.priority === "Urgent" ? t(" · urgent") : ""}
                 {r.done_on ? t(" · done {done_on}", { done_on: r.done_on }) : ""}
               </li>
