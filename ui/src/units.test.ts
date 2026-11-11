@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { byBuilding, endingSoon } from "./Home";
+import { byBuilding, endingSoon, PRIORITY_TONES, UNIT_TONE } from "./Home";
 
 describe("the units page", () => {
   it("groups units by building", () => {
@@ -65,5 +65,12 @@ describe("owners' statements", () => {
     expect(payoutState(s)).toBe("Waiting for accounts");
     expect(payoutState({ ...s, still_to_pay: "9500" })).toBe("9500 to pay");
     expect(payoutState({ ...s, still_to_pay: "0" })).toBe("Paid");
+  });
+});
+
+describe("the badges' tones", () => {
+  it("keeps a unit's tone from its status and an urgent request's mark red", () => {
+    expect(UNIT_TONE).toEqual({ Let: "green", Vacant: "amber", "Under Maintenance": "red" });
+    expect(PRIORITY_TONES.Urgent).toBe("red");
   });
 });
