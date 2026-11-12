@@ -130,6 +130,7 @@ cd ui && npm run build && npm run check
 
 | Version | Highlights |
 |---|---|
+| **0.8.2** | Rebuilt on the tuned design system: better menu icons, a lighter first page, a visible scroll cue, cleaner print. |
 | **0.8.1** | The redesigned interface: the upgraded design system, shaped loading, told-apart states. |
 | **0.8.0** | Owners' expenses from ERP's approved bills (by the building's cost center, or a repair's bill); service charges by floor area, equal shares or weighted area, and what was spent read from the bills; the Owner Reconciliation report (FEO-050). |
 | **0.7.12** | Its names in Arabic and Hindi; the last English sentences translated. |
