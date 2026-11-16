@@ -7,7 +7,7 @@
 //! of the customers their address belongs to, and a request they raise runs as the system after
 //! these checks.
 
-use ferrum_domain::util::{b, id, s, sys};
+use ferrum_domain::util::{id, s, sys};
 use ferrum_kernel::{Ctx, Doc, Error, Filter, Kernel, Result, Site, SiteRequest, SiteResponse, Tx, with_retry};
 use serde_json::{Map, Value, json};
 use uuid::Uuid;
@@ -50,28 +50,11 @@ fn text(body: &Map<String, Value>, key: &str, max: usize, optional: bool) -> Res
     Ok(Some(v.to_string()))
 }
 
-/// The customers an address belongs to: the customer's own email, or one of its contacts'.
-async fn lessees_of(k: &Kernel, sctx: &Ctx, tx: &mut Tx, email: &str) -> Result<Vec<Uuid>> {
-    let mut out: Vec<Uuid> = k
-        .find_tx(sctx, tx, "Customer", &[Filter::eq("email", email)], Some("created_at asc"), 20)
-        .await?
-        .iter()
-        .filter(|c| !b(c, "disabled"))
-        .filter_map(|c| id(c, "id"))
-        .collect();
-    if sctx.schema.entity("Contact").is_some_and(|c| c.field("emails").is_some() && c.field("customer").is_some()) {
-        let contacts = k.find_tx(sctx, tx, "Contact", &[Filter::eq("emails.email", email)], Some("created_at asc"), 20).await?;
-        out.extend(contacts.iter().filter_map(|c| id(c, "customer")));
-    }
-    out.sort();
-    out.dedup();
-    Ok(out)
-}
-
-/// The caller's leases past their draft, newest first.
+/// The caller's leases past their draft, newest first: those of the customers their address belongs
+/// to, as ERP's portal finds them.
 async fn leases(k: &Kernel, sctx: &Ctx, tx: &mut Tx, email: &str) -> Result<Vec<Doc>> {
     let mut out = vec![];
-    for c in lessees_of(k, sctx, tx, email).await? {
+    for c in ferrum_app_erp::portal::customers_of(k, sctx, tx, email).await? {
         out.extend(k.find_tx(sctx, tx, "Lease", &[Filter::eq("lessee", c.to_string())], Some("starts_on desc"), 50).await?);
     }
     out.retain(|l| s(l, "status") != Some("Draft"));
