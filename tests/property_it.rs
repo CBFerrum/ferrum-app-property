@@ -19,6 +19,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
 
+/// Commerce's mark on the customers its guest checkouts make, as its package adds it; installed
+/// late, so that the rest runs as a workspace without Commerce does.
+const COMMERCE: &str = "{package: commerce, version: '1', depends: [parties], field_prefix: commerce_, overlays: [{entity: Customer, ops: \
+     [{op: add_field, field: {name: commerce_guest, type: check, read_only: true, in_filter: true}}]}]}";
+
 fn obj(v: Value) -> Doc {
     v.as_object().cloned().unwrap()
 }
@@ -118,6 +123,7 @@ async fn scenario() {
     let mut packages = ferrum_domain::packages().expect("platform packages");
     packages.extend(ferrum_app_erp::packages().expect("ERP's packages"));
     packages.extend(ferrum_app_property::packages().expect("app packages"));
+    packages.push(ferrum_meta::catalog::load_package_files(&[("package.yaml".to_string(), COMMERCE.to_string())].into()).expect("Commerce's mark"));
     let catalog = Catalog::from_packages(packages).expect("catalog");
     let mut hooks = HookRegistry::default();
     ferrum_domain::register(&mut hooks);
@@ -912,4 +918,31 @@ async fn scenario() {
         .collect();
     assert_eq!(balances, vec![(ls1, 60.0, 2190.0, 2628.0, 438.0), (ls2, 40.0, 1460.0, 1752.0, 292.0)], "each its weighted share of what was spent");
     refused(t.k.run_action(&manager, "ServiceChargeBudget", hall_2026, "reconcile", json!({})).await, "invalid", "");
+
+    // ───────────── "Your home": a web shop's guest under her address, a customer put aside ─────────────
+    // Anyone may type anyone's address at a guest checkout: the customer it makes is not hers, nor is
+    // a disabled one her contact names, nor are their leases.
+    t.k.install_packages(tenant, &["commerce".into()]).await.expect("Commerce's mark");
+    let sys = ferrum_domain::util::sys(&k.load_ctx(tenant, a.user, None, "it".into()).await.unwrap());
+    let guest = json!({"customer_name": "Ana at the shop", "customer_type": "Individual", "email": "ana@harbour.test", "commerce_guest": true});
+    let guest = uid(&t.insert(&sys, "Customer", guest).await["id"]);
+    let old = uid(&t.insert(&a, "Customer", json!({"customer_name": "Rao Holdings", "customer_type": "Company"})).await["id"]);
+    t.insert(&a, "Contact", json!({"first_name": "Ana", "emails": [{"email": "ana@harbour.test"}], "customer": old.to_string()})).await;
+    let (u108, u109) = (uid(&t.insert(&manager, "Unit", unit("108")).await["id"]), uid(&t.insert(&manager, "Unit", unit("109")).await["id"]));
+    for (u, who) in [(u108, guest), (u109, old)] {
+        let l = uid(&t.insert(&manager, "Lease", lease(u, who, "2026-01-01", "2026-12-31", "1000", "Monthly", json!([]))).await["id"]);
+        t.k.run_action(&manager, "Lease", l, "activate", Value::Null).await.expect("let");
+    }
+    t.k.update(&a, "Customer", old, obj(json!({"disabled": true})), None).await.expect("put aside");
+    let ana_p = k.load_ctx(tenant, ana_p.user, None, "it".into()).await.unwrap();
+    let home = call(&k, Some(&ana_p), "GET", "portal/home", Value::Null).await.unwrap();
+    let units: Vec<&str> = home["leases"].as_array().unwrap().iter().filter_map(|l| l["unit_number"].as_str()).collect();
+    assert!(!units.contains(&"108") && !units.contains(&"109"), "neither the guest's lease nor the disabled customer's: {units:?}");
+    for u in [u108, u109] {
+        refused(
+            call(&k, Some(&ana_p), "POST", "portal/requests", json!({"unit": u.to_string(), "summary": "Not hers"})).await,
+            "invalid",
+            "not a unit you rent now",
+        );
+    }
 }
