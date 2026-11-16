@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.4
+
+Needs the same platform as 0.8.3. No database change. Interface only, `ui/dist` rebuilt with Ferrum-Frontend `06bd1a2`.
+
+- The two routes to the screens apps no longer have (`apps/:app/settings`, `x/:app/:page`) are gone.
+- The page starts through the frontend's `mountApp`, which keeps lists fresh for 30 seconds (Property said 5); the
+  interface lint has no baseline file any more.
+
 ## 0.8.3
 
 Your home finds a portal person's customers as ERP's portal does (`ferrum_app_erp::portal::customers_of`), in place of a copy of its own that had missed two of ERP's rules. A customer a web shop made at a guest checkout under the person's address counted as theirs, though anyone may type anyone's address there; so did a disabled customer one of their contacts names. Either one's leases, rent and invoices showed on the person's page, and they could ask for repairs in its units. ERP is now a dependency of the app, not of its tests only.

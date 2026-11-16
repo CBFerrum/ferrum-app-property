@@ -7,7 +7,7 @@
 
 <br>
 
-[![Version](https://img.shields.io/badge/version-0.8.3-0f766e?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.8.4-0f766e?style=flat-square)](CHANGELOG.md)
 [![Licence: AGPL-3.0](https://img.shields.io/badge/licence-AGPL--3.0-blue?style=flat-square)](LICENSE)
 [![Ferrum platform](https://img.shields.io/badge/runs%20on-Ferrum-2f5bea?style=flat-square)](https://github.com/CBFerrum/Ferrum)
 ![Rust](https://img.shields.io/badge/Rust-server-b7410e?style=flat-square&logo=rust)
@@ -376,6 +376,7 @@ Ferrum apps on the same platform. **Leaders:** 🟡 means a lighter feature, an 
 
 ### ✅ Recently shipped
 
+- [x] **0.8.4** Rebuilt on Ferrum-Frontend 06bd1a2: the staff's and the portal's pages start through `mountApp`; no routes to the screens apps no longer have.
 - [x] **0.8.3** Your home finds a tenant's customers as ERP's portal does: never a web shop's guest or a disabled customer.
 - [x] **0.8.2** Tuned design system: better menu icons, lighter first page, cleaner print.
 - [x] **0.8.1** The redesigned interface with shaped loading and told-apart states.
