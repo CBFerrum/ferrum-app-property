@@ -3,21 +3,14 @@
 // workspace's portal, "Your home" at /portal/home/ and "Properties you own" at /portal/owner/
 // (Ferrum docs/plan/apps-ui.md §9.1).
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { StrictMode, useEffect } from "react";
-import { createRoot } from "react-dom/client";
-import { createBrowserRouter, Link, Outlet, RouterProvider, useRouteError } from "react-router";
-import { addCatalogs, bootstrap, isolate, routeBase, shell, t, wordsReady } from "@ferrum/client";
-import { ConfirmHost, EmptyState, ErrorState, Toaster } from "@ferrum/kit";
-import { RequireAuth, setFrameMode } from "@ferrum/records/frame";
+import { useEffect } from "react";
+import { Link, Outlet, useRouteError } from "react-router";
+import { bootstrap, isolate, shell, t } from "@ferrum/client";
+import { EmptyState, ErrorState } from "@ferrum/kit";
+import { mountApp, RequireAuth, setFrameMode } from "@ferrum/records/frame";
 import "./styles.css";
 
-// Its own words in the page's language (src/locales), fetched as the page starts; it is drawn once they are in.
-void addCatalogs({ ar: () => import("./locales/ar.json"), hi: () => import("./locales/hi.json") });
-
-const page = (name: "FormView" | "ListView" | "ReportView" | "AppSettingsPage" | "ScreenPage") => () => import("./records").then((m) => ({ Component: m[name] }));
-
-const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false, staleTime: 5_000 } } });
+const page = (name: "FormView" | "ListView" | "ReportView") => () => import("./records").then((m) => ({ Component: m[name] }));
 
 function RouteError() {
   return <ErrorState error={useRouteError()} onRetry={() => window.location.reload()} />;
@@ -94,29 +87,12 @@ const staffRoutes = [
       { path: "e/:entity", lazy: page("ListView") },
       { path: "e/:entity/:id", lazy: page("FormView") },
       { path: "r/:name", lazy: page("ReportView") },
-      { path: "apps/:app/settings", lazy: page("AppSettingsPage") },
-      { path: "x/:app/:page", lazy: page("ScreenPage") },
       { path: "*", element: <NotFound /> },
     ],
   },
 ];
 
-const router =
-  entry === OWNER
-    ? createBrowserRouter(ownerRoutes, { basename: routeBase(OWNER) })
-    : onPortal
-      ? createBrowserRouter(portalRoutes, { basename: routeBase(PORTAL) })
-      : createBrowserRouter(staffRoutes, { basename: routeBase("property") });
-
-// Drawn once the page's words are in (its language's catalogs, fetched as the page starts).
-void wordsReady().then(() =>
-  createRoot(document.getElementById("root")!).render(
-    <StrictMode>
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-        <Toaster />
-        <ConfirmHost />
-      </QueryClientProvider>
-    </StrictMode>,
-  ),
-);
+mountApp({
+  catalogs: { ar: () => import("./locales/ar.json"), hi: () => import("./locales/hi.json") },
+  ...(entry === OWNER ? { route: OWNER, routes: ownerRoutes } : onPortal ? { route: PORTAL, routes: portalRoutes } : { route: "property", routes: staffRoutes }),
+});
