@@ -7,7 +7,7 @@
 
 <br>
 
-[![Version](https://img.shields.io/badge/version-0.8.2-0f766e?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.8.3-0f766e?style=flat-square)](CHANGELOG.md)
 [![Licence: AGPL-3.0](https://img.shields.io/badge/licence-AGPL--3.0-blue?style=flat-square)](LICENSE)
 [![Ferrum platform](https://img.shields.io/badge/runs%20on-Ferrum-2f5bea?style=flat-square)](https://github.com/CBFerrum/Ferrum)
 ![Rust](https://img.shields.io/badge/Rust-server-b7410e?style=flat-square&logo=rust)
@@ -43,7 +43,7 @@ get a page on the workspace's portal.
 
 | | |
 |---|---|
-| **Version** | 0.8.2 |
+| **Version** | 0.8.3 |
 | **Kind** | Its own interface at `/property/` (units by building, leases ending soon, open requests); the portal's "Your home" and "Properties you own"; every record in Ferrum's lists and forms |
 | **What it adds** | 17 record types (9 documents, 7 child tables, 1 settings record), 2 roles, 1 report, 1 menu |
 | **Depends on** | Ferrum platform `>=0.3.2, <0.4`; ERP `>=0.1` (installing Property installs ERP) |
@@ -211,6 +211,8 @@ get a page on the workspace's portal.
 - **Your home** (`/portal/home/`). A tenant signs in to the workspace's portal and sees their leases past draft, each at the rent in
   effect today (reviews and indexing counted), the rent invoiced for each (opening on ERP's "Your invoices" once issued; a draft says it is
   not issued yet), and the repairs they asked for. They ask for a repair only in a unit they rent now, with how soon it is needed.
+  Their leases are those of the customers their address belongs to, as ERP's portal finds them: never a disabled customer, nor one a
+  web shop made at a guest checkout.
 - **Properties you own** (`/portal/owner/`). A building names its owner's address. Signed in with it, the owner sees each of their
   buildings: its units, let or vacant, and the lease letting each now (to whom, until when, at its rent today); the rent, charges and late
   fees invoiced and still owed, by the month their period starts, from issued invoices only; its repairs, open or done in the last 90
@@ -374,6 +376,7 @@ Ferrum apps on the same platform. **Leaders:** 🟡 means a lighter feature, an 
 
 ### ✅ Recently shipped
 
+- [x] **0.8.3** Your home finds a tenant's customers as ERP's portal does: never a web shop's guest or a disabled customer.
 - [x] **0.8.2** Tuned design system: better menu icons, lighter first page, cleaner print.
 - [x] **0.8.1** The redesigned interface with shaped loading and told-apart states.
 - [x] **0.8.0** Owners' expenses from ERP's approved bills; service charges by floor area, equal shares or weighted area, with spending
