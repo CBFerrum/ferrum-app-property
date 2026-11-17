@@ -154,6 +154,10 @@ async fn scenario() {
     // ───────────── the books and the buildings ─────────────
     let inr = t.find_one("Currency", json!({"code": "INR"})).await;
     let company = uid(&t.insert(&a, "Company", json!({"company_name": "Harbour Estates", "abbr": "HE", "default_currency": inr["id"]})).await["id"]);
+    // Only the current fiscal year comes with the company; the bills and rents below are dated in the two before it.
+    for (name, from, to) in [("2024-25", "2024-04-01", "2025-03-31"), ("2025-26", "2025-04-01", "2026-03-31")] {
+        t.insert(&a, "FiscalYear", json!({"year_name": name, "company": company.to_string(), "start_date": from, "end_date": to})).await;
+    }
     let services = t.find_one("ItemGroup", json!({"group_name": "Services"})).await;
     let nos = t.find_one("Uom", json!({"uom_name": "Nos"})).await;
     let item = |code: &str| json!({"item_code": code, "item_name": code, "item_group": services["id"], "stock_uom": nos["id"], "is_stock_item": false});
