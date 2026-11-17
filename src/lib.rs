@@ -41,8 +41,10 @@ pub fn packages() -> std::result::Result<Vec<ferrum_meta::Package>, ferrum_meta:
     ferrum_meta::catalog::load_embedded(EMBEDDED)
 }
 
-/// Registers this app's document hooks, and the portal's pages.
+/// Registers this app's document hooks, the portal's pages, and the words for its guard against
+/// letting a unit twice (packages/property/sql/001_property.sql).
 pub fn register(hooks: &mut HookRegistry) {
+    ferrum_kernel::error::set_constraint_message("property_unit_let_once", "the unit is let on some of these days");
     hooks
         .register("Lease", Arc::new(leases::LeaseHook))
         .register("RepairRequest", Arc::new(requests::RequestHook))

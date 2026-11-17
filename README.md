@@ -7,13 +7,13 @@
 
 <br>
 
-[![Version](https://img.shields.io/badge/version-0.8.4-0f766e?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.8.5-0f766e?style=flat-square)](CHANGELOG.md)
 [![Licence: AGPL-3.0](https://img.shields.io/badge/licence-AGPL--3.0-blue?style=flat-square)](LICENSE)
 [![Ferrum platform](https://img.shields.io/badge/runs%20on-Ferrum-2f5bea?style=flat-square)](https://github.com/CBFerrum/Ferrum)
 ![Rust](https://img.shields.io/badge/Rust-server-b7410e?style=flat-square&logo=rust)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-data-336791?style=flat-square&logo=postgresql&logoColor=white)
 ![React](https://img.shields.io/badge/React%20%2B%20TypeScript-interface-087ea4?style=flat-square&logo=react&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-8%20Rust%20%2B%20UI%20suite-16a34a?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-9%20Rust%20%2B%20UI%20suite-16a34a?style=flat-square)
 
 ### Rent invoiced on time, once, to the day, and owners told exactly what they are owed.
 
@@ -43,13 +43,13 @@ get a page on the workspace's portal.
 
 | | |
 |---|---|
-| **Version** | 0.8.4 |
+| **Version** | 0.8.5 |
 | **Kind** | Its own interface at `/property/` (units by building, leases ending soon, open requests); the portal's "Your home" and "Properties you own"; every record in Ferrum's lists and forms |
 | **What it adds** | 17 record types (9 documents, 7 child tables, 1 settings record), 2 roles, 1 report, 1 menu |
 | **Depends on** | Ferrum platform `>=0.3.2, <0.4`; ERP `>=0.1` (installing Property installs ERP) |
 | **Works with** | ERP (customers, suppliers, items, companies, accounts, cost centres, sales and purchase invoices, journal entries) |
 | **Languages** | English, Arabic, Hindi (words and record names); right-to-left layout |
-| **Tests** | 8 Rust tests (one walks a year at a block of flats on PostgreSQL) and a UI suite |
+| **Tests** | 9 Rust tests (one walks a year at a block of flats on PostgreSQL, one asks for the same days fifty times at once) and a UI suite |
 | **Licence** | AGPL-3.0-only |
 
 ## 📸 Screenshots
@@ -127,7 +127,8 @@ get a page on the workspace's portal.
 - **Four states.** *Draft, Active, Ended, Terminated.* Activate It, End It Early, Give Notice, Review the Rent and Return the
   Deposit show only when they apply.
 - **One lease to a unit's days.** Activating a lease lets its unit. A second lease over any of the same days is refused, naming
-  the lease that holds them. An ended or terminated lease keeps the days it ran.
+  the lease that holds them. An ended or terminated lease keeps the days it ran. The database holds the same rule, so of two
+  leases of a unit activated at once, one lets it and the other is refused.
 - **Terms are kept.** A draft may change. Once active, a lease's unit, tenant, dates, rent, frequency, charges, rent reviews,
   deposit and notice stay as agreed: end it and make another.
 - **Ending.** A lease runs to its last day, then upkeep ends it and frees the unit. Ended early by agreement, on a day from its
@@ -167,7 +168,8 @@ get a page on the workspace's portal.
 ### 🧾 Service charges
 
 - **Budgets by year.** A **Service Charge Budget** for a building and a year lists its shared costs (cleaning, security, upkeep of
-  the common parts). One budget per building and year.
+  the common parts). One budget per building and year, and two budgets in use never cover the same day, however many are put
+  in use at once.
 - **Three ways to share.** By *Floor Area*, *Equal Shares*, or *Weighted Area* (floor area by each unit's weighting, so a shop on the
   street can bear more than its area). A budget in use keeps its basis.
 - **Invoiced with the rent.** A lease that pays service charge is invoiced its unit's share with its rent. A period across two
@@ -186,7 +188,7 @@ get a page on the workspace's portal.
   their cost; and lines added by hand. The owner's own payout bills are never charged.
 - **Bill the payout.** Billing makes the owner's Purchase Invoice to the company, from the owner as ERP's supplier, for accounts
   payable as ERP pays bills. It is refused without the owner in the books or a payout item. A billed statement is kept as it is,
-  and overlapping days are refused.
+  and overlapping days are refused, by the database too, so two statements saved at once cannot both cover a day.
 - **A building's owner's costs and a budget's shared costs have cost centres of their own,** never the same one.
 - **Numbered** `OS-2026-00001`.
 
@@ -376,6 +378,7 @@ Ferrum apps on the same platform. **Leaders:** 🟡 means a lighter feature, an 
 
 ### ✅ Recently shipped
 
+- [x] **0.8.5** One lease, budget or statement to a day: the database refuses overlaps, so requests that arrive together cannot both be kept.
 - [x] **0.8.4** Rebuilt on Ferrum-Frontend 06bd1a2: the staff's and the portal's pages start through `mountApp`; no routes to the screens apps no longer have.
 - [x] **0.8.3** Your home finds a tenant's customers as ERP's portal does: never a web shop's guest or a disabled customer.
 - [x] **0.8.2** Tuned design system: better menu icons, lighter first page, cleaner print.
@@ -448,7 +451,9 @@ The database must exist, be owned by a role that is not a superuser (superusers 
 run. `tests/property_it.rs` walks a year at a block of flats: leases and the unit's days; rent and parking invoiced each month, once;
 a quarterly lease cut at its end and a lease ended early; reviews, notice, a late fee and a deposit; days given back by credit note or a
 redrawn draft; urgent requests holding a unit; who may do what; the portals; and an owner's statement billed and seen on the portal.
-Rust dependencies come from the Ferrum platform and Ferrum ERP repositories on `main`.
+`tests/double_booking_it.rs` activates fifty leases of one unit for the same year at once, puts fifty overlapping budgets of one
+building in use at once and saves fifty statements of one building for the same days at once, each on its own connection: one is
+kept each time. Rust dependencies come from the Ferrum platform and Ferrum ERP repositories on `main`.
 
 The interface lives in `ui/` and is built with Ferrum-Frontend. Check the Frontend out beside the repository as `../ferrum/web`,
 install its packages, then:
@@ -467,7 +472,7 @@ CI (`.github/workflows/ci.yml`) runs Rust on PostgreSQL 17 and the interface che
 
 ```text
 app.yaml                    manifest: id, roles, shell entries, portal pages, assistant notes
-packages/property/          entities, roles and personal-data rules as YAML
+packages/property/          entities, roles and personal-data rules as YAML; sql/ the database's guard against letting a unit twice
 src/leases.rs               leases, rent periods, reviews, indexation, notice, late fees, deposits
 src/service.rs              service charge budgets and reconciliation
 src/statements.rs           owners' statements
@@ -476,6 +481,7 @@ src/reports.rs              Owner Reconciliation
 src/site.rs                 the tenant and owner portal pages
 ui/                         the home page and portal pages; words in Arabic and Hindi
 tests/property_it.rs        a year at a block of flats on PostgreSQL
+tests/double_booking_it.rs  the same days asked for fifty times at once
 docs/PROVENANCE.md          where the design comes from
 ```
 

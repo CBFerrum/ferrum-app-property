@@ -120,6 +120,9 @@
     - {name: actual, type: currency, read_only: true, no_copy: true, label: Spent, description: "What the year's shared costs came to"}
     - {name: balances, type: table, of: ServiceChargeBalance, read_only: true, no_copy: true, description: "Each lease's share of the difference, and what was made for it"}
   unique: [[building, year_from]]
+  # Putting one in use refuses an overlap first, naming the other's year; this holds when two are put in use at once.
+  exclusion:
+    - {fields: [building], from: year_from, to: year_to, when_not: {status: [Draft]}, message: the building has a budget in use over some of these days}
   list: {columns: [building, year_from, year_to, budget, status], sort: year_from desc}
   actions:
     - {name: activate_budget, label: Use It, permission: write, condition: "doc.status == 'Draft'"}
@@ -263,6 +266,9 @@
     - {name: payout, type: currency, read_only: true, no_copy: true, in_list: true, description: "Collected, less the fee and the expenses"}
     - {name: status, type: select, options: [Draft, Billed], default: Draft, read_only: true, no_copy: true, in_list: true, in_filter: true}
     - {name: purchase_invoice, type: link, to: PurchaseInvoice, read_only: true, no_copy: true, label: Billed By}
+  # Saving one refuses an overlap first, naming the other; this holds when two are saved at once.
+  exclusion:
+    - {fields: [building], from: period_from, to: period_to, message: another statement covers some of these days already}
   actions:
     - {name: bill_owner, label: Bill The Payout, permission: write, condition: "doc.status == 'Draft'", confirm: "The owner's share is billed to the company as a purchase invoice, and this statement is kept as it is."}
   numbering: {template: "OS-{YYYY}-{seq:5}"}

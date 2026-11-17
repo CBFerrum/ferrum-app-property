@@ -330,10 +330,12 @@ impl DocHook for LeaseHook {
             "activate" => {
                 let from = date(doc, "starts_on").ok_or_else(|| Error::field("starts_on", "is required"))?;
                 let to = date(doc, "ends_on").ok_or_else(|| Error::field("ends_on", "is required"))?;
-                // Any lease past its draft holds its days, to the day it ended early or ends on notice.
+                // Any lease past its draft holds its days, to the day it ended early or ends on notice
+                // (last_day). Named here; the database refuses the same overlap by itself when two
+                // are activated at once (packages/property/sql/001_property.sql).
                 let other: Option<String> = sqlx::query_scalar(
                     "select number from e_lease where tenant_id = $1 and unit = $2 and status <> 'Draft' and id <> $3 \
-                     and starts_on <= $5 and least(ends_on, coalesce(terminated_on, leaving_on, ends_on)) >= $4 limit 1",
+                     and starts_on <= $5 and least(ends_on, terminated_on, leaving_on) >= $4 limit 1",
                 )
                 .bind(hc.ctx.tenant)
                 .bind(unit)
