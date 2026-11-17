@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.8.5
+
+Needs the same platform as 0.8.4. A database change: an exclusion constraint on leases (package SQL `sql/001_property.sql`)
+and two declared on service charge budgets and owners' statements (`exclusion:` in their definitions).
+
+- **One lease, budget in use or statement to a day, however many ask at once.** Each overlap check read and then wrote,
+  with nothing to stop requests from all reading before any wrote: fifty draft leases of one unit for the same year
+  activated at once let it fifty times, fifty overlapping budgets of one building put in use at once were all in use, and
+  fifty statements of one building for one quarter saved at once were all kept. The database now refuses the overlap:
+  a unit's leases past their draft (to their last day: the end, or sooner when ended early or on notice), a building's
+  budgets in use, and a building's statements. One is kept; the others are refused in the app's words naming the other,
+  or "the unit is let on some of these days", "the building has a budget in use over some of these days", "another
+  statement covers some of these days already".
+- Activating a lease reads another lease's last day as `last_day` does, the soonest of its end, the day it was ended early
+  and the day its notice runs out.
+
 ## 0.8.4
 
 Needs the same platform as 0.8.3. No database change. Interface only, `ui/dist` rebuilt with Ferrum-Frontend `06bd1a2`.
