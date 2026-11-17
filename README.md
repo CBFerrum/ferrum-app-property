@@ -30,7 +30,7 @@ get a page on the workspace's portal.
 - 📅 **Rent that bills itself, once.** Upkeep invoices each period of an active lease, monthly, quarterly or yearly. A period
   is invoiced once however often upkeep runs, and a period cut short owes its days' share ("45 of 91 days").
 - 🔒 **Terms stay as agreed.** Once active, a lease keeps its unit, tenant, dates, rent, charges and deposit. Only the rent may
-  be reviewed, for periods not yet invoiced. A unit has one lease on any day.
+  be reviewed, for periods not yet invoiced. A lease cannot be activated over days another lease holds on the unit.
 - 🧮 **The arithmetic is built in.** Rent reviews, indexation to a price index with a cap and a floor, part periods, late fees,
   and days given back by credit note when a lease ends early.
 - 🏦 **Everything in the ledger.** Rent is a Sales Invoice, a deposit is a journal entry, an owner's payout is a Purchase
@@ -43,7 +43,7 @@ get a page on the workspace's portal.
 
 | | |
 |---|---|
-| **Version** | 0.8.3 |
+| **Version** | 0.8.4 |
 | **Kind** | Its own interface at `/property/` (units by building, leases ending soon, open requests); the portal's "Your home" and "Properties you own"; every record in Ferrum's lists and forms |
 | **What it adds** | 17 record types (9 documents, 7 child tables, 1 settings record), 2 roles, 1 report, 1 menu |
 | **Depends on** | Ferrum platform `>=0.3.2, <0.4`; ERP `>=0.1` (installing Property installs ERP) |
@@ -313,7 +313,7 @@ and trust accounting; this one is built around the lease, the period invoice and
 | Capability | Ferrum Property | Yardi | AppFolio | Buildium | MRI |
 |---|:-:|:-:|:-:|:-:|:-:|
 | Buildings and units with type, area and status | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Leases that cannot overlap on a unit | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Overlapping leases on a unit refused | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Rent invoiced each period, automatically, with part periods | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Other charges invoiced with the rent | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Rent reviews and indexation with a cap and a floor | ✅ | ✅ | 🟡 | 🟡 | ✅ |

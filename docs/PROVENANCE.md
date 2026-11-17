@@ -7,5 +7,5 @@ This app's design and code are its own. No code was copied from another project.
   inspections, and maintenance requests by priority.
 - The invoices are ERP's Sales Invoices, made through the platform's records as Hospitality,
   Restaurant and Education make theirs.
-- No property-management reference was copied into `ERP/referance` for it: ERPNext has no such
+- No property-management reference was copied for it: ERPNext has no such
   module, and the candidates we know of are under licences this project does not copy from.
