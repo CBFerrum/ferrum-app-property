@@ -7,7 +7,7 @@
 
 <br>
 
-[![Version](https://img.shields.io/badge/version-0.8.5-0f766e?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.9.0-0f766e?style=flat-square)](CHANGELOG.md)
 [![Licence: AGPL-3.0](https://img.shields.io/badge/licence-AGPL--3.0-blue?style=flat-square)](LICENSE)
 [![Ferrum platform](https://img.shields.io/badge/runs%20on-Ferrum-2f5bea?style=flat-square)](https://github.com/CBFerrum/Ferrum)
 ![Rust](https://img.shields.io/badge/Rust-server-b7410e?style=flat-square&logo=rust)
@@ -43,10 +43,10 @@ get a page on the workspace's portal.
 
 | | |
 |---|---|
-| **Version** | 0.8.5 |
+| **Version** | 0.9.0 |
 | **Kind** | Its own interface at `/property/` (units by building, leases ending soon, open requests); the portal's "Your home" and "Properties you own"; every record in Ferrum's lists and forms |
 | **What it adds** | 17 record types (9 documents, 7 child tables, 1 settings record), 2 roles, 1 report, 1 menu |
-| **Depends on** | Ferrum platform `>=0.3.2, <0.4`; ERP `>=0.1` (installing Property installs ERP) |
+| **Depends on** | Ferrum platform `>=0.4.0, <0.5`; ERP `>=0.1` (installing Property installs ERP) |
 | **Works with** | ERP (customers, suppliers, items, companies, accounts, cost centres, sales and purchase invoices, journal entries) |
 | **Languages** | English, Arabic, Hindi (words and record names); right-to-left layout |
 | **Tests** | 9 Rust tests (one walks a year at a block of flats on PostgreSQL, one asks for the same days fifty times at once) and a UI suite |
@@ -378,6 +378,7 @@ Ferrum apps on the same platform. **Leaders:** 🟡 means a lighter feature, an 
 
 ### ✅ Recently shipped
 
+- [x] **0.9.0** Upkeep is one workspace's: needs Ferrum 0.4.0.
 - [x] **0.8.5** One lease, budget or statement to a day: the database refuses overlaps, so requests that arrive together cannot both be kept.
 - [x] **0.8.4** Rebuilt on Ferrum-Frontend 06bd1a2: the staff's and the portal's pages start through `mountApp`; no routes to the screens apps no longer have.
 - [x] **0.8.3** Your home finds a tenant's customers as ERP's portal does: never a web shop's guest or a disabled customer.
@@ -428,7 +429,7 @@ Ferrum apps on the same platform. **Leaders:** 🟡 means a lighter feature, an 
 ## 🚀 Install
 
 Property is a native Ferrum app: the Ferrum server includes it (`runtime: native`) and a workspace turns it on from **App Manager**. It
-needs platform `>=0.3.2, <0.4`. Installing it installs **ERP**, which holds customers, items, invoices and the ledger.
+needs platform `>=0.4.0, <0.5`. Installing it installs **ERP**, which holds customers, items, invoices and the ledger.
 
 After installing:
 

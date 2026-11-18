@@ -1,6 +1,6 @@
 id: property
 name: Property
-version: 0.8.5
+version: 0.9.0
 publisher: cbferrum
 summary: "Buildings and units, leases invoiced each period through ERP, rent reviews, notice, late fees and deposits through the books, repairs and inspections, and portal pages for lessees and owners"
 description: README.md
@@ -9,7 +9,7 @@ license: AGPL-3.0-only
 homepage: https://github.com/CBFerrum/ferrum-app-property
 support: https://github.com/CBFerrum/ferrum-app-property/issues
 runtime: native
-platform: ">=0.3.2, <0.4"
+platform: ">=0.4.0, <0.5"
 # Records of ERP (customers, items, invoices): installing it installs ERP.
 requires: {erp: ">=0.1"}
 packages: [property]
