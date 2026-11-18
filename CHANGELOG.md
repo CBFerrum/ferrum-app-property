@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.0
+
+No database or interface change. Needs Ferrum 0.4.0 (apps' upkeep runs one workspace at a time, on whichever replica is free).
+
+- **Upkeep is one workspace's.** `maintenance(k, tenant)` and `maintenance_on(k, tenant, today)` invoice and end leases for the one
+  workspace they are given; they no longer list workspaces or check for the package.
+
 ## 0.8.5
 
 Needs the same platform as 0.8.4. A database change: an exclusion constraint on leases (package SQL `sql/001_property.sql`)

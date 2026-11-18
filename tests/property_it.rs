@@ -133,7 +133,6 @@ async fn scenario() {
     }
     let k = Kernel::boot(db, catalog, hooks, KernelSettings::default(), None).await.expect("boot");
     ferrum_domain::maintenance(&k).await.expect("partitions");
-    ferrum_app_erp::maintenance(&k).await.expect("partitions");
     let tenant = k
         .create_tenant(NewTenant {
             slug: "harbour".into(),
@@ -168,7 +167,7 @@ async fn scenario() {
     let manager = t.user("manager@harbour.test", &["Property Manager"]).await;
     let fixer = t.user("fixer@harbour.test", &["Facilities"]).await;
     // No settings yet: upkeep has nowhere to invoice from, and does nothing.
-    ferrum_app_property::maintenance_on(&k, day("2026-01-15")).await.expect("upkeep without settings");
+    ferrum_app_property::maintenance_on(&k, tenant, day("2026-01-15")).await.expect("upkeep without settings");
     t.insert(&manager, "PropertySettings", json!({"company": company.to_string(), "rent_item": rent.to_string()})).await;
     let tower = uid(&t.insert(&manager, "Building", json!({"building_name": "Harbour View", "address": "1 Quay Street"})).await["id"]);
     let unit = |n: &str| json!({"unit_number": n, "building": tower.to_string(), "unit_type": "Residential", "area": "80"});
@@ -206,11 +205,11 @@ async fn scenario() {
     t.k.update(&manager, "Lease", second, obj(json!({"starts_on": "2026-07-01"})), None).await.expect("a draft moves");
 
     // ───────────── upkeep: each month invoiced once ─────────────
-    ferrum_app_property::maintenance_on(&k, day("2026-03-15")).await.expect("upkeep");
+    ferrum_app_property::maintenance_on(&k, tenant, day("2026-03-15")).await.expect("upkeep");
     let want = |months: &[(&str, &str)], amount: f64| months.iter().map(|(f, l)| (f.to_string(), l.to_string(), amount)).collect::<Vec<_>>();
     let q1 = [("2026-01-01", "2026-01-31"), ("2026-02-01", "2026-02-28"), ("2026-03-01", "2026-03-31")];
     assert_eq!(t.periods(first).await, want(&q1, 32000.0), "rent and parking for each month begun");
-    ferrum_app_property::maintenance_on(&k, day("2026-03-15")).await.expect("upkeep again");
+    ferrum_app_property::maintenance_on(&k, tenant, day("2026-03-15")).await.expect("upkeep again");
     assert_eq!(t.periods(first).await.len(), 3, "a period is invoiced once");
     // Its next invoice wound back (a mistaken fix by hand), a period still is not invoiced again.
     let mut tx = t.k.db.tenant_tx(t.tenant).await.unwrap();
@@ -222,7 +221,7 @@ async fn scenario() {
         .await
         .unwrap();
     tx.commit().await.unwrap();
-    ferrum_app_property::maintenance_on(&k, day("2026-03-15")).await.expect("upkeep after the wind-back");
+    ferrum_app_property::maintenance_on(&k, tenant, day("2026-03-15")).await.expect("upkeep after the wind-back");
     assert_eq!(t.periods(first).await.len(), 3, "February and March are not invoiced twice");
     let jan = t.find_one("RentInvoice", json!({"lease": first.to_string(), "period_from": "2026-01-01"})).await;
     let inv = t.get("SalesInvoice", uid(&jan["sales_invoice"])).await;
@@ -234,11 +233,11 @@ async fn scenario() {
     assert_eq!(dec(&inv["grand_total"]), 32000.0);
     assert_eq!(t.get("Lease", first).await["next_invoice_on"], "2026-04-01");
     // Its last month invoiced, a lease still runs to its end.
-    ferrum_app_property::maintenance_on(&k, day("2026-06-10")).await.expect("upkeep");
+    ferrum_app_property::maintenance_on(&k, tenant, day("2026-06-10")).await.expect("upkeep");
     assert_eq!(t.periods(first).await.len(), 6);
     assert_eq!(t.get("Lease", first).await["status"], "Active", "the lease runs to the 30th");
     assert_eq!(t.status(u101).await, "Let");
-    ferrum_app_property::maintenance_on(&k, day("2026-07-01")).await.expect("upkeep");
+    ferrum_app_property::maintenance_on(&k, tenant, day("2026-07-01")).await.expect("upkeep");
     assert_eq!(t.get("Lease", first).await["status"], "Ended");
     assert_eq!(t.status(u101).await, "Vacant");
     assert_eq!(t.periods(first).await.len(), 6, "nothing after its end");
@@ -248,7 +247,7 @@ async fn scenario() {
     // ───────────── a quarterly lease, cut at its end ─────────────
     let quarterly = uid(&t.insert(&manager, "Lease", lease(u102, bo, "2026-01-01", "2026-05-15", "90000", "Quarterly", json!([]))).await["id"]);
     t.k.run_action(&manager, "Lease", quarterly, "activate", Value::Null).await.unwrap();
-    ferrum_app_property::maintenance_on(&k, day("2026-06-01")).await.expect("upkeep");
+    ferrum_app_property::maintenance_on(&k, tenant, day("2026-06-01")).await.expect("upkeep");
     // Its last quarter, cut at its end, owes its 45 days of 91.
     let mut cut = want(&[("2026-01-01", "2026-03-31")], 90000.0);
     cut.extend(want(&[("2026-04-01", "2026-05-15")], 44505.49));
@@ -264,7 +263,7 @@ async fn scenario() {
     refused(t.k.run_action(&manager, "Lease", second, "terminate", Value::Null).await, "invalid", "last day");
     t.k.run_action(&manager, "Lease", second, "terminate", json!({"date": "2026-09-30"})).await.expect("ended early");
     assert_eq!(t.status(u101).await, "Vacant", "freed when it ends");
-    ferrum_app_property::maintenance_on(&k, day("2026-12-01")).await.expect("upkeep");
+    ferrum_app_property::maintenance_on(&k, tenant, day("2026-12-01")).await.expect("upkeep");
     let to_september = [("2026-07-01", "2026-07-31"), ("2026-08-01", "2026-08-31"), ("2026-09-01", "2026-09-30")];
     assert_eq!(t.periods(second).await, want(&to_september, 31000.0), "nothing after the day it ended");
     assert_eq!(t.get("Lease", second).await["status"], "Terminated");
@@ -457,20 +456,20 @@ async fn scenario() {
     t.k.run_action(&manager, "Lease", fourth, "review_rent", json!({"date": "2027-05-01", "rent": "22000", "note": "Market review"})).await.expect("reviewed");
     assert_eq!(t.get("Lease", fourth).await["rent_reviews"].as_array().unwrap().len(), 2);
     refused(t.k.update(&manager, "Lease", fourth, obj(json!({"notice_days": 10})), None).await, "invalid", "keeps its terms");
-    ferrum_app_property::maintenance_on(&k, day("2026-10-15")).await.expect("upkeep");
+    ferrum_app_property::maintenance_on(&k, tenant, day("2026-10-15")).await.expect("upkeep");
     assert_eq!(t.periods(fourth).await, want(&[("2026-08-01", "2026-08-31"), ("2026-09-01", "2026-09-30"), ("2026-10-01", "2026-10-31")], 20000.0));
     // August issued and left unpaid: once past its due day and five more, a fee, once.
     let august = t.find_one("RentInvoice", json!({"lease": fourth.to_string(), "period_from": "2026-08-01"})).await;
     let august_invoice = uid(&august["sales_invoice"]);
     let issued_august = t.k.submit(&a, "SalesInvoice", august_invoice, None).await.expect("issued");
     let due = day(issued_august["due_date"].as_str().or(issued_august["posting_date"].as_str()).unwrap());
-    ferrum_app_property::maintenance_on(&k, due + chrono::Duration::days(5)).await.expect("upkeep");
+    ferrum_app_property::maintenance_on(&k, tenant, due + chrono::Duration::days(5)).await.expect("upkeep");
     assert!(t.get("RentInvoice", uid(&august["id"])).await["late_fee_invoice"].is_null(), "not late yet");
-    ferrum_app_property::maintenance_on(&k, due + chrono::Duration::days(6)).await.expect("upkeep");
+    ferrum_app_property::maintenance_on(&k, tenant, due + chrono::Duration::days(6)).await.expect("upkeep");
     let fee = t.get("RentInvoice", uid(&august["id"])).await["late_fee_invoice"].clone();
     let fee_invoice = t.get("SalesInvoice", uid(&fee)).await;
     assert_eq!((fee_invoice["customer"].as_str(), dec(&fee_invoice["grand_total"])), (Some(cy.to_string().as_str()), 900.0), "500 and 2% of 20000");
-    ferrum_app_property::maintenance_on(&k, due + chrono::Duration::days(9)).await.expect("upkeep");
+    ferrum_app_property::maintenance_on(&k, tenant, due + chrono::Duration::days(9)).await.expect("upkeep");
     assert_eq!(t.get("RentInvoice", uid(&august["id"])).await["late_fee_invoice"], fee, "once");
     // Notice from the lessee: the lease ends when it runs out, its last period cut there.
     refused(
@@ -484,7 +483,7 @@ async fn scenario() {
     refused(t.k.run_action(&manager, "Lease", fourth, "give_notice", json!({"date": "2026-11-02", "by": "Landlord"})).await, "invalid", "notice was given on");
     let overlap = uid(&t.insert(&manager, "Lease", lease(u104, ana, "2026-11-20", "2027-03-31", "20000", "Monthly", json!([]))).await["id"]);
     refused(t.k.run_action(&manager, "Lease", overlap, "activate", Value::Null).await, "invalid", "let on some of these days");
-    ferrum_app_property::maintenance_on(&k, day("2026-12-15")).await.expect("upkeep");
+    ferrum_app_property::maintenance_on(&k, tenant, day("2026-12-15")).await.expect("upkeep");
     let l4 = t.get("Lease", fourth).await;
     assert_eq!((l4["status"].as_str(), l4["terminated_on"].as_str()), (Some("Terminated"), Some("2026-12-01")));
     let periods = t.periods(fourth).await;
@@ -677,7 +676,7 @@ async fn scenario() {
     let u105 = uid(&t.insert(&manager, "Unit", unit("105")).await["id"]);
     let quarters = uid(&t.insert(&manager, "Lease", lease(u105, bo, "2026-07-01", "2027-06-30", "92000", "Quarterly", with_parking.clone())).await["id"]);
     t.k.run_action(&manager, "Lease", quarters, "activate", Value::Null).await.unwrap();
-    ferrum_app_property::maintenance_on(&k, day("2026-10-05")).await.expect("upkeep");
+    ferrum_app_property::maintenance_on(&k, tenant, day("2026-10-05")).await.expect("upkeep");
     let quarter = |from: &'static str| {
         let t = &t;
         async move { t.find("RentInvoice", json!({"lease": quarters.to_string(), "period_from": from})).await }
@@ -705,7 +704,7 @@ async fn scenario() {
     monthly["notice_days"] = json!(14);
     let months = uid(&t.insert(&manager, "Lease", monthly).await["id"]);
     t.k.run_action(&manager, "Lease", months, "activate", Value::Null).await.unwrap();
-    ferrum_app_property::maintenance_on(&k, day("2026-10-05")).await.expect("upkeep");
+    ferrum_app_property::maintenance_on(&k, tenant, day("2026-10-05")).await.expect("upkeep");
     let october = || {
         let t = &t;
         async move { t.find_one("RentInvoice", json!({"lease": months.to_string(), "period_from": "2026-10-01"})).await }
@@ -746,8 +745,8 @@ async fn scenario() {
     refused(t.k.update(&manager, "Lease", indexed, obj(json!({"index_cap": "10"})), None).await, "invalid", "keeps its terms");
     // A year on, its rent follows the index's 6%, held to its 4% cap; the year after, the index falls
     // and the rent does not.
-    ferrum_app_property::maintenance_on(&k, day("2027-01-15")).await.expect("upkeep");
-    ferrum_app_property::maintenance_on(&k, day("2028-01-15")).await.expect("upkeep");
+    ferrum_app_property::maintenance_on(&k, tenant, day("2027-01-15")).await.expect("upkeep");
+    ferrum_app_property::maintenance_on(&k, tenant, day("2028-01-15")).await.expect("upkeep");
     let reviews: Vec<(String, f64, String)> = t.get("Lease", indexed).await["rent_reviews"]
         .as_array()
         .unwrap()
@@ -793,7 +792,7 @@ async fn scenario() {
     for l in [la, lb] {
         t.k.run_action(&manager, "Lease", l, "activate", Value::Null).await.unwrap();
     }
-    ferrum_app_property::maintenance_on(&k, day("2026-01-05")).await.expect("upkeep");
+    ferrum_app_property::maintenance_on(&k, tenant, day("2026-01-05")).await.expect("upkeep");
     // Each month bears its days of the unit's share: 60% of 30 a day is 18, 40% is 12.
     let month = |l: Uuid, from: &'static str| {
         let t = &t;
@@ -839,7 +838,7 @@ async fn scenario() {
     t.k.run_action(&manager, "ServiceChargeBudget", pier_budget, "activate_budget", Value::Null).await.expect("in use");
     let lp = uid(&t.insert(&manager, "Lease", paying(p1, bo, "2025-01-01", "2025-12-31")).await["id"]);
     t.k.run_action(&manager, "Lease", lp, "activate", Value::Null).await.unwrap();
-    ferrum_app_property::maintenance_on(&k, day("2026-01-05")).await.expect("upkeep");
+    ferrum_app_property::maintenance_on(&k, tenant, day("2026-01-05")).await.expect("upkeep");
     t.k.run_action(&manager, "ServiceChargeBudget", pier_budget, "reconcile", json!({"actual": "1000"})).await.expect("reconciled");
     let row = t.get("ServiceChargeBudget", pier_budget).await["balances"][0].clone();
     assert_eq!((dec(&row["charged"]), dec(&row["due"]), dec(&row["difference"])), (333.34, 333.33, -0.01), "what its invoices bore");
@@ -856,7 +855,7 @@ async fn scenario() {
     terms["pays_service_charge"] = json!(true);
     let lq = uid(&t.insert(&manager, "Lease", terms).await["id"]);
     t.k.run_action(&manager, "Lease", lq, "activate", Value::Null).await.unwrap();
-    ferrum_app_property::maintenance_on(&k, day("2026-01-05")).await.expect("upkeep");
+    ferrum_app_property::maintenance_on(&k, tenant, day("2026-01-05")).await.expect("upkeep");
     let quarter = dec(&t.find_one("RentInvoice", json!({"lease": lq.to_string(), "period_from": "2025-11-01"})).await["amount"]);
     assert_eq!(quarter, 3000.0 + 610.0 + 620.0, "61 days of 2025 at 10 a day, 31 of 2026 at 20");
 
@@ -896,7 +895,7 @@ async fn scenario() {
     for l in [ls1, ls2] {
         t.k.run_action(&manager, "Lease", l, "activate", Value::Null).await.unwrap();
     }
-    ferrum_app_property::maintenance_on(&k, day("2026-01-05")).await.expect("upkeep");
+    ferrum_app_property::maintenance_on(&k, tenant, day("2026-01-05")).await.expect("upkeep");
     // 2025 by weighted area: 150 against 100, so 6 a day and 4 a day of 10; 2026 equal: 5 each.
     let rent_of = |l: Uuid, from: &'static str| {
         let t = &t;

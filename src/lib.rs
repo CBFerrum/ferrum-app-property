@@ -25,7 +25,7 @@ mod statements;
 use chrono::NaiveDate;
 use ferrum_domain::reports::ReportSource;
 use ferrum_domain::util::s;
-use ferrum_kernel::{Ctx, Doc, Error, HookRegistry, Kernel, Result, Tx};
+use ferrum_kernel::{Ctx, Doc, HookRegistry, Kernel, Result, Tx};
 use serde_json::{Value, json};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -59,37 +59,21 @@ pub fn reports() -> Vec<Arc<dyn ReportSource>> {
     vec![Arc::new(reports::OwnerReconciliation)]
 }
 
-/// Upkeep: each active lease's due periods invoiced, and leases past their end ended, as of each
+/// Upkeep, for one workspace: each active lease's due periods invoiced, and leases past their end ended, as of the
 /// workspace's own day.
-pub async fn maintenance(k: &Kernel) -> Result<()> {
-    upkeep_all(k, None).await
+pub async fn maintenance(k: &Kernel, tenant: Uuid) -> Result<()> {
+    upkeep(k, tenant, None).await
 }
 
-/// [`maintenance`] as of `today` in every workspace.
-pub async fn maintenance_on(k: &Kernel, today: NaiveDate) -> Result<()> {
-    upkeep_all(k, Some(today)).await
+/// [`maintenance`] as of `today`.
+pub async fn maintenance_on(k: &Kernel, tenant: Uuid, today: NaiveDate) -> Result<()> {
+    upkeep(k, tenant, Some(today)).await
 }
 
-async fn upkeep_all(k: &Kernel, day: Option<NaiveDate>) -> Result<()> {
-    let mut tx = k.db.system_tx().await?;
-    let tenants: Vec<Uuid> = sqlx::query_scalar("select id from tenant where status = 'active' order by id").fetch_all(&mut *tx).await?;
-    tx.commit().await?;
-    let mut first_error: Option<Error> = None;
-    for tenant in tenants {
-        match k.registry.schema(tenant).await {
-            Ok(s) if s.packages.iter().any(|p| p == "property") => {
-                let today = day.unwrap_or_else(|| Ctx::system(tenant, s.clone()).today());
-                if let Err(e) = leases::upkeep(k, tenant, s, today).await {
-                    first_error.get_or_insert(e);
-                }
-            }
-            Ok(_) => {}
-            Err(e) => {
-                first_error.get_or_insert(e);
-            }
-        }
-    }
-    first_error.map_or(Ok(()), Err)
+async fn upkeep(k: &Kernel, tenant: Uuid, day: Option<NaiveDate>) -> Result<()> {
+    let s = k.registry.schema(tenant).await?;
+    let today = day.unwrap_or_else(|| Ctx::system(tenant, s.clone()).today());
+    leases::upkeep(k, tenant, s, today).await
 }
 
 /// A date field.
